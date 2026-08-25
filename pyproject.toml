@@ -35,8 +35,8 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 ocr-pipeline = "ocr_resilience.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Abishek9342/ocr-resilience-pipeline"
-Issues = "https://github.com/Abishek9342/ocr-resilience-pipeline/issues"
+Homepage = "https://github.com/Abishek9342/ocr-pipeline"
+Issues = "https://github.com/Abishek9342/ocr-pipeline/issues"
 
 [tool.setuptools.packages.find]
 include = ["ocr_resilience*"]

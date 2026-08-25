@@ -11,8 +11,8 @@ benchmark run attached will be asked to add one before review.
 ## Setup
 
 ```bash
-git clone https://github.com/Abishek9342/ocr-resilience-pipeline.git
-cd ocr-resilience-pipeline
+git clone https://github.com/Abishek9342/ocr-pipeline.git
+cd ocr-pipeline
 pip install -e ".[all,benchmark,dev]"
 ```
 

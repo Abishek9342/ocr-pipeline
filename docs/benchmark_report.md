@@ -155,8 +155,8 @@ case, and a stacked-degradation case.
 ## Reproducing this report
 
 ```bash
-git clone https://github.com/Abishek9342/ocr-resilience-pipeline.git
-cd ocr-resilience-pipeline
+git clone https://github.com/Abishek9342/ocr-pipeline.git
+cd ocr-pipeline
 pip install -e ".[all,benchmark,dev]"
 python -m benchmark.run_benchmark --engines tesseract,easyocr,paddleocr,ours --presets all
 python -m benchmark.run_ablation

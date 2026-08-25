@@ -360,8 +360,8 @@ ocr-pipeline ./scans/ --output results/     # batch: one JSON per input, one bad
 ## Running the tests / benchmark yourself
 
 ```bash
-git clone https://github.com/Abishek9342/ocr-resilience-pipeline.git
-cd ocr-resilience-pipeline
+git clone https://github.com/Abishek9342/ocr-pipeline.git
+cd ocr-pipeline
 pip install -e ".[all,benchmark,dev]"
 pytest tests/                                       # unit + regression tests, no OCR binary required (adapters mocked)
 python -m benchmark.run_benchmark --presets all      # full benchmark -> benchmark/results/
