@@ -19,8 +19,18 @@ project would still need, why it isn't here, and what it would take.
 - **Multilingual test data** — every engine here supports far more than
   English (PaddleOCR: 80+ languages; EasyOCR: 80+; RapidOCR: Chinese-
   optimized with broader model options). None of that has been exercised.
-  Needs: per-language ground-truth text and, ideally, real (not
-  font-rendered) samples per script.
+  **Confirmed blocked at the model level, not just the dataset level**:
+  checked directly — `tesseract --list-langs` shows only `eng` installed
+  (no Hindi/Tamil/etc. `.traineddata`); `~/.EasyOCR/model/` only has
+  `english_g2.pth` cached; `~/.paddlex/official_models/` only has
+  `en_PP-OCRv4_mobile_rec` (the detection models are language-agnostic,
+  but recognition needs a matching language model). Loading any
+  non-English model would require a fresh download, and this
+  environment has no outbound network access from code execution
+  (confirmed separately — DNS resolution fails). Needs: network access
+  to fetch language models (or pre-bundled models), plus per-language
+  ground-truth text and, ideally, real (not font-rendered) samples per
+  script.
 - **A held-out "challenge set"** never used for tuning (mission section
   22). With one contributor and no history of parameter-tuning-against-
   the-test-set pressure yet, creating one now would be process theater —
@@ -80,13 +90,17 @@ project would still need, why it isn't here, and what it would take.
 
 ## Buildable, but deliberately deferred this round (scope, not blockers)
 
-- **Statistical rigor beyond what exists**: `benchmark/run_benchmark.py`
-  reports means/median/P95 latency already, and `benchmark/run_robustness.py`
-  now adds severity-sweep curves (mission section 18 — done, see
-  `docs/robustness_curves.md`). Still missing: confidence intervals on
-  CER/WER and repeated-run latency variance. With a 20-image corpus, a
-  confidence interval would be wide enough to not change any conclusion
-  in this README — worth adding once the corpus is larger.
+- ~~**Statistical rigor**~~ — **done**, see `docs/statistical_rigor_report.md`
+  (bootstrap CIs on mean CER, repeated-run latency variance). Correcting
+  a speculation this file itself made earlier: this gap's original entry
+  guessed "a confidence interval would be wide enough to not change any
+  conclusion" — measured, that guess was wrong. `ours`' 95% CI ([0.023,
+  0.044]) doesn't overlap PaddleOCR's ([0.080, 0.148]) even at only 220
+  samples per system; the pipeline's advantage over the best baseline is
+  statistically distinguishable, not just a point-estimate difference.
+  Not yet done: CIs on WER (mechanical extension of the same method), and
+  repeated-run latency variance for EasyOCR/PaddleOCR/RapidOCR (only
+  Tesseract measured so far, to keep the report's own runtime small).
 - **Cascading compute tiers as a fully general N-tier system** (mission
   section 11). What exists: quality assessment (tier 0) -> adaptive
   single/multi-engine routing (tiers 1-3) -> confidence-based fallback to

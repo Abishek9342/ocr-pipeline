@@ -112,6 +112,14 @@ bought with real, measured compute cost, not free. Whether that trade is
 worth it depends on your use case — this table is what lets you decide,
 not a headline claim.
 
+**Is the overall mean-CER gap real, or could it be noise at this sample
+size?** Bootstrap 95% confidence intervals (`docs/statistical_rigor_report.md`):
+`ours` [0.023, 0.044] vs. PaddleOCR (the best baseline) [0.080, 0.148] —
+the intervals don't overlap at all, at 220 samples per system. The four
+baseline engines are mostly *not* statistically distinguishable from each
+other this way (their intervals overlap); the pipeline's overall
+advantage over all of them is.
+
 Run `python -m benchmark.run_benchmark --engines tesseract,easyocr,paddleocr,rapidocr,ours --presets all`
 yourself; raw per-image results, an aggregated `summary.csv`, per-stage
 `latency.csv`, and a machine-readable `benchmark.json` land in

@@ -12,6 +12,13 @@ selection + confidence calibration; `docs/engine_selection_report.md`,
 for the detailed evidence behind it.
 
 ### Added
+- `benchmark/stats_utils.py` — bootstrap confidence intervals and
+  repeated-run latency variance (mission section 21's statistical-rigor
+  gap). Applied to the headline CER comparison: `ours`' 95% CI ([0.023,
+  0.044]) doesn't overlap PaddleOCR's ([0.080, 0.148]) even at 220
+  samples/system — the pipeline's overall advantage is statistically
+  distinguishable from the best single baseline, not just a point-
+  estimate difference. See `docs/statistical_rigor_report.md`.
 - `ocr_resilience/engine_selection.py` — quality-aware single-engine
   selection (`select_primary_engine`), replacing `router.decide()`'s
   previous `available_engines[0]` (pure registration order) with
@@ -59,6 +66,18 @@ for the detailed evidence behind it.
   guaranteeing deterministic execution order across process invocations.
   The corrected, twice-confirmed-reproducible numbers are what's
   published in `docs/confidence_calibration_report.md`.
+- **The `ours`-vs-baselines full benchmark numbers were from a run that
+  started before this phase's router code existed** — a background
+  process doesn't pick up file edits made after it starts. Re-ran with
+  all current code actually in effect; the corrected numbers show a
+  larger win than the isolated regret metric alone implied (mean CER
+  0.038 -> 0.032, presets won outright 3 -> 5 of 11).
+- **The calibration report initially overstated its own finding**:
+  "measurably hurts on 3 of 6 presets" was the point-estimate direction,
+  but a paired bootstrap 95% CI on each per-preset difference (added
+  alongside `stats_utils.py`, above) shows every one includes zero — the
+  accurate claim is "no statistically detectable effect," not "shown to
+  hurt." Corrected in `docs/confidence_calibration_report.md`.
 
 ## [0.3.0] - Unreleased
 

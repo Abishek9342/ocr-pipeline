@@ -32,6 +32,22 @@ Final handoff for `ocr_next_research_mission.md`. Cross-references:
   `raw_results.csv` (always Tesseract). This made the new router look
   far worse than it is (28% apparent top-1) until fixed to compare CER
   *values* (60% actual top-1).
+- Re-ran the full benchmark after ALL of this phase's code was actually
+  in place (an earlier run had started before `select_primary_engine`
+  existed and silently used the old router the whole time — Python
+  doesn't hot-reload an already-running process). The corrected run
+  shows a larger, more direct win than the isolated regret metric alone
+  implied — see "Current benchmark position."
+- Added `benchmark/stats_utils.py` (bootstrap confidence intervals,
+  repeated-run latency variance) and applied it to both the headline
+  CER comparison and the calibration comparison — see
+  `docs/statistical_rigor_report.md`. This corrected an earlier,
+  overstated claim in this same phase's calibration report (see below).
+- Confirmed, directly (not just asserted), that multilingual testing is
+  blocked at the model level, not just the dataset level: `tesseract
+  --list-langs` shows only `eng`; EasyOCR/PaddleOCR's local model caches
+  only have English recognition models; no outbound network access
+  exists to fetch others. See `docs/engineering_backlog.md`.
 
 ### What was measured
 
@@ -130,6 +146,12 @@ argument. PaddleOCR alone is still the best single engine on the other
   one.
 - Calibration's null result is itself only weakly powered (20 images) —
   "rejected at this sample size," not "proven not to work at any scale."
+  Now precisely quantified, not just asserted: a paired bootstrap 95% CI
+  on every raw-vs-calibrated CER difference includes zero (see
+  `docs/statistical_rigor_report.md` and the corrected
+  `docs/confidence_calibration_report.md`) — the honest claim is "no
+  detectable effect," not "shown to hurt," which an earlier draft of that
+  report overstated before this correction.
 - No cost-aware routing formula (Phase 12) — the two decisions this phase
   made were cost-aware informally, not via a general optimizer.
 - Phase 15's regression protection for the FULL benchmark (not just unit

@@ -15,6 +15,7 @@ import pandas as pd
 from benchmark.corpus import build_corpus
 from benchmark.degrade import apply_degradation
 from benchmark.run_benchmark import stable_seed
+from benchmark.stats_utils import bootstrap_ci
 from ocr_resilience.calibration import apply_calibration, expected_calibration_error, fit_binned_calibrator
 from ocr_resilience.engines import EasyOCRAdapter, TesseractAdapter
 from ocr_resilience.fusion import fuse
@@ -61,11 +62,19 @@ def raw_vs_calibrated_fusion(calibrators: dict) -> None:
             results[preset]["raw_weighted"].append(cer(raw_text, truth))
             results[preset]["calibrated_weighted"].append(cer(cal_text, truth))
 
-    print(f"\n{'preset':15s} {'raw_weighted':>14s} {'calibrated_weighted':>20s}")
+    print(f"\n{'preset':15s} {'raw_weighted':>14s} {'calibrated_weighted':>20s} {'diff 95% CI (paired)':>24s}")
     for p in PRESETS:
-        r = sum(results[p]["raw_weighted"]) / len(results[p]["raw_weighted"])
-        c = sum(results[p]["calibrated_weighted"]) / len(results[p]["calibrated_weighted"])
-        print(f"{p:15s} {r:14.4f} {c:20.4f}")
+        raw_vals, cal_vals = results[p]["raw_weighted"], results[p]["calibrated_weighted"]
+        r = sum(raw_vals) / len(raw_vals)
+        c = sum(cal_vals) / len(cal_vals)
+        # Paired bootstrap on (calibrated - raw) per image, since both are
+        # measured on the SAME 20 images — a paired comparison is the
+        # correct one here, not treating the two lists as independent.
+        diffs = [cal - raw for cal, raw in zip(cal_vals, raw_vals)]
+        ci = bootstrap_ci(diffs, n_resamples=2000, seed=0)
+        excludes_zero = ci["ci_lower"] > 0 or ci["ci_upper"] < 0
+        distinguishable = "excludes 0 (real effect)" if excludes_zero else "includes 0 (not distinguishable from noise)"
+        print(f"{p:15s} {r:14.4f} {c:20.4f} [{ci['ci_lower']:+.4f}, {ci['ci_upper']:+.4f}] {distinguishable}")
 
 
 if __name__ == "__main__":

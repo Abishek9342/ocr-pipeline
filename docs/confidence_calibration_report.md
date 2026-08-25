@@ -76,14 +76,27 @@ Same controlled setup as the weighted-vs-unweighted experiment in
 ensemble tesseract+easyocr, adaptive preprocessing on), run via
 `docs/reproduce_calibration_analysis.py`:
 
-| Preset | Raw-weighted CER | Calibrated-weighted CER | Direction |
-|---|---:|---:|---|
-| clean | 0.0144 | 0.0144 | no change |
-| heavy_blur | 0.0146 | 0.0146 | no change |
-| skewed | 0.0104 | 0.0160 | worse |
-| combo_hard | 0.0545 | 0.0593 | worse |
-| motion_blur | 0.3200 | 0.3265 | worse |
-| noisy | 0.0124 | 0.0124 | no change |
+| Preset | Raw-weighted CER | Calibrated-weighted CER | Paired 95% CI on the difference | Statistically distinguishable from zero? |
+|---|---:|---:|---|---|
+| clean | 0.0144 | 0.0144 | [+0.0000, +0.0000] | No |
+| heavy_blur | 0.0146 | 0.0146 | [-0.0063, +0.0060] | No |
+| skewed | 0.0104 | 0.0160 | [+0.0000, +0.0147] | No |
+| combo_hard | 0.0545 | 0.0593 | [-0.0071, +0.0182] | No |
+| motion_blur | 0.3200 | 0.3265 | [+0.0000, +0.0196] | No |
+| noisy | 0.0124 | 0.0124 | [+0.0000, +0.0000] | No |
+
+**None of the six differences are statistically distinguishable from
+zero** at 95% confidence (paired bootstrap on the per-image
+calibrated-minus-raw CER, `docs/reproduce_calibration_analysis.py`). This
+sharpens — and corrects — an earlier, less careful version of this
+finding that called the point-estimate differences on skewed/combo_hard/
+motion_blur "worse": that's true of the raw numbers, but at only 20
+images per preset the honest statement is "no detectable effect," not
+"calibration hurts." Contrast this with the CER comparison in
+`docs/statistical_rigor_report.md`, where `ours`' advantage over the best
+baseline DOES clear this same statistical bar cleanly — the calibration
+question genuinely doesn't, and that distinction is the point of doing
+this rigorously rather than eyeballing point estimates.
 
 **Honesty note on how this table was produced, because it matters**: an
 earlier, inline (not saved-to-a-script) run of this exact comparison
@@ -105,20 +118,23 @@ finding #9 already drew from a different bug in this same session.
 
 ## Calibration quality analysis / keep-reject decision
 
-**REJECT adopting calibrated fusion as the default.** Once measured via
-a script confirmed reproducible across repeats (not a single live run),
-calibration does not help anywhere in this comparison and measurably
-hurts on 3 of 6 presets (skewed, combo_hard, motion_blur) — the opposite
-of what the calibration hypothesis predicted for combo_hard specifically.
-Two things can both be true here: (1) the per-engine ECE numbers above
-are real and reproducible (PaddleOCR genuinely is well-calibrated,
-EasyOCR genuinely is not), and (2) correcting for that miscalibration,
-via this specific simple method, does not translate into better fused
-text on this benchmark. A calibrated number from this method is a
+**REJECT adopting calibrated fusion as the default — on the precise
+grounds that there is no statistically detectable benefit, not on the
+grounds that it was proven to hurt.** Once measured via a script
+confirmed reproducible across repeats (not a single live run) AND once a
+paired bootstrap CI was applied to the per-preset differences, none of
+the six point-estimate differences (three numerically better, three
+numerically worse for calibration) clear the bar of being distinguishable
+from zero at 95% confidence, at this sample size (20 images/preset). Two
+things can both be true here: (1) the per-engine ECE numbers above are
+real and reproducible (PaddleOCR genuinely is well-calibrated, EasyOCR
+genuinely is not), and (2) correcting for that miscalibration, via this
+specific simple method, has not been shown to translate into better
+fused text on this benchmark — "not shown to help" is the accurate
+claim, not "shown to hurt." A calibrated number from this method is a
 **quality proxy for ranking**, not a validated probability — the
-methodology (a proxy correctness label, not true binary outcomes) doesn't
-support a stronger claim, and this result doesn't support adopting it
-even as a proxy for fusion weighting.
+methodology (a proxy correctness label, not true binary outcomes)
+doesn't support a stronger claim either way.
 
 **What would justify revisiting**: a larger corpus (reduces the
 noise-floor problem directly), and/or isotonic regression if binned
