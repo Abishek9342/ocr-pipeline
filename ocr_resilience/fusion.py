@@ -115,12 +115,25 @@ def _needleman_wunsch(a: str, b: str, match: int = 2, mismatch: int = -1, gap: i
     return "".join(reversed(aligned_a)), "".join(reversed(aligned_b))
 
 
-def _vote_text(candidates: list[tuple[str, float]]) -> str:
+def _vote_text(candidates: list[tuple[str, float]], weighted: bool = True) -> str:
     """ROVER-style consensus: iteratively align each new candidate against
-    the running consensus backbone, then vote per column (confidence-
-    weighted). Starting backbone is the highest-confidence candidate, not
-    an arbitrary first one, so early alignment quality doesn't hinge on
-    engine order."""
+    the running consensus backbone, then vote per column.
+
+    `weighted=True` (default) is confidence-weighted, with the highest-
+    confidence candidate as the starting backbone. This assumes different
+    engines' confidence SCALES are comparable — investigated directly (see
+    docs/failure_analysis.md) and found NOT reliably true: on the
+    `combo_hard` degradation, Tesseract's confidence ran systematically
+    higher than EasyOCR's even in cases where Tesseract was the WRONG
+    answer (e.g. 0.802 vs 0.679 confidence, but Tesseract's text had
+    higher CER), which structurally biases the weighted vote toward
+    whichever engine happens to over-report confidence, independent of
+    actual correctness. `weighted=False` gives every candidate equal
+    weight (uniform majority vote) and uses the CALLER's ordering for the
+    backbone/tie-break (see `fuse()`, which sorts by engine name for
+    determinism) instead of a confidence-based one. Neither is
+    unconditionally better — see the ablation comparing them before
+    changing the default."""
     if not candidates:
         return ""
     if len(candidates) == 1:
@@ -128,11 +141,13 @@ def _vote_text(candidates: list[tuple[str, float]]) -> str:
     if len(set(text for text, _ in candidates)) == 1:
         return candidates[0][0]  # unanimous — skip alignment entirely
 
-    ordered = sorted(candidates, key=lambda c: -c[1])
+    ordered = sorted(candidates, key=lambda c: -c[1]) if weighted else list(candidates)
     backbone_text, backbone_conf = ordered[0]
-    columns: list[list[tuple[str, float]]] = [[(ch, backbone_conf)] for ch in backbone_text]
+    backbone_weight = backbone_conf if weighted else 1.0
+    columns: list[list[tuple[str, float]]] = [[(ch, backbone_weight)] for ch in backbone_text]
 
     for text, conf in ordered[1:]:
+        weight = conf if weighted else 1.0
         aligned_backbone, aligned_new = _needleman_wunsch(
             "".join(col[0][0] if len(col) == 1 else _majority_char(col) for col in columns), text,
         )
@@ -141,7 +156,7 @@ def _vote_text(candidates: list[tuple[str, float]]) -> str:
         for bch, nch in zip(aligned_backbone, aligned_new):
             votes = list(columns[col_idx]) if bch != GAP else []
             if nch != GAP:
-                votes.append((nch, conf))
+                votes.append((nch, weight))
             if votes:
                 new_columns.append(votes)
             if bch != GAP:
@@ -176,11 +191,14 @@ def _reconstruct_engine_hypothesis(dets: list[Detection]) -> tuple[str, float]:
     return text, confidence
 
 
-def fuse(detections: list[Detection]) -> list[Detection]:
+def fuse(detections: list[Detection], weighted: bool = True) -> list[Detection]:
     """Combine detections from however many engines actually ran. With one
     engine, this is a pass-through (nothing to vote on); with 2+, spatial
     grouping + per-engine reconstruction + textual voting produces one
-    consensus Detection per region."""
+    consensus Detection per region. `weighted` is forwarded to
+    `_vote_text` — see its docstring for the cross-engine confidence-
+    calibration caveat that motivated adding this as a real option rather
+    than an assumption."""
     fused = []
     for group in group_by_region(detections):
         by_engine: dict[str, list[Detection]] = {}
@@ -191,8 +209,10 @@ def fuse(detections: list[Detection]) -> list[Detection]:
             (engine, dets), = by_engine.items()
             text, confidence = _reconstruct_engine_hypothesis(dets)
         else:
-            hypotheses = {engine: _reconstruct_engine_hypothesis(dets) for engine, dets in by_engine.items()}
-            text = _vote_text(list(hypotheses.values()))
+            # sorted by engine name: deterministic backbone/tie-break for
+            # weighted=False, and irrelevant to weighted=True's own re-sort.
+            hypotheses = {engine: _reconstruct_engine_hypothesis(dets) for engine, dets in sorted(by_engine.items())}
+            text = _vote_text(list(hypotheses.values()), weighted=weighted)
             confidence = sum(conf for _, conf in hypotheses.values()) / len(hypotheses)
 
         xs1 = min(d.bbox[0] for d in group); ys1 = min(d.bbox[1] for d in group)

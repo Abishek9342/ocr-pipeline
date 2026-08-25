@@ -172,6 +172,8 @@ class OCRPipeline:
         skip_preprocessing: bool = False,
         force_ensemble: bool | None = None,
         force_step: str | None = None,
+        fusion_weighted: bool = True,
+        min_confidence_for_fallback: float | None = None,
     ) -> OCRResult:
         """Run the full pipeline on one image.
 
@@ -184,10 +186,23 @@ class OCRPipeline:
         operator applied unconditionally, see `preprocess.apply_single_step`),
         `force_ensemble=False` reproduces "Baseline + adaptive preprocessing"
         without routing, `force_ensemble=True` reproduces "Baseline +
-        multi-engine selection" unconditionally. Default (all None/False)
-        is the normal adaptive behavior. `force_step` and
-        `skip_preprocessing=True` are mutually exclusive by construction —
-        the former is checked first if both are somehow passed.
+        multi-engine selection" unconditionally. `fusion_weighted=False`
+        reproduces "Baseline + unweighted fusion" (see `fusion.fuse`'s
+        docstring for why confidence-weighted voting isn't unconditionally
+        correct — cross-engine confidence scales aren't verified
+        comparable). Default (all None/False/True) is the normal adaptive
+        behavior. `force_step` and `skip_preprocessing=True` are mutually
+        exclusive by construction — the former is checked first if both
+        are somehow passed.
+
+        `min_confidence_for_fallback`: if set, and the first attempt's
+        mean confidence falls below this threshold AND not every
+        available engine already ran, escalate to a second pass using
+        every available engine, and keep whichever attempt has higher
+        confidence. This is a genuine second OCR attempt with a different
+        configuration (more engines), not a preprocessing retry — costs
+        roughly double the latency only when it actually triggers. `None`
+        (default) disables it entirely, at zero overhead.
         """
         if isinstance(image, str):
             image = cv2.imread(image)
@@ -219,18 +234,54 @@ class OCRPipeline:
         else:
             routing = RoutingDecision(engines_to_run=[next(iter(self._engines))], reason="forced single engine (ablation override)")
 
+        ordered, engine_timing = self._run_engines_and_fuse(processed, routing.engines_to_run, fusion_weighted)
+        timing.update(engine_timing)
+        result = OCRResult(detections=ordered, quality=report, routing=routing, preprocessing_steps=steps, timing_sec=timing)
+
+        if (
+            min_confidence_for_fallback is not None
+            and result.confidence < min_confidence_for_fallback
+            and len(routing.engines_to_run) < len(self._engines)
+        ):
+            fallback_engines = list(self._engines.keys())
+            fallback_ordered, fallback_timing = self._run_engines_and_fuse(processed, fallback_engines, fusion_weighted)
+            timing.update({f"fallback_{k}": v for k, v in fallback_timing.items()})
+            fallback_routing = RoutingDecision(
+                engines_to_run=fallback_engines,
+                reason=(
+                    f"confidence-based fallback: first pass confidence {result.confidence:.2f} "
+                    f"< threshold {min_confidence_for_fallback} -> escalated to full ensemble "
+                    f"(first pass: {routing.reason})"
+                ),
+            )
+            fallback_result = OCRResult(
+                detections=fallback_ordered, quality=report, routing=fallback_routing,
+                preprocessing_steps=steps, timing_sec=timing,
+            )
+            if fallback_result.confidence > result.confidence:
+                return fallback_result
+            result.routing.reason += (
+                f" (confidence-based fallback attempted, did not improve: "
+                f"{fallback_result.confidence:.2f} <= {result.confidence:.2f} — kept first pass)"
+            )
+
+        return result
+
+    def _run_engines_and_fuse(
+        self, processed: np.ndarray, engine_names: list[str], fusion_weighted: bool,
+    ) -> tuple[list[Detection], dict[str, float]]:
+        timing: dict[str, float] = {}
         all_detections: list[Detection] = []
-        for name in routing.engines_to_run:
+        for name in engine_names:
             t0 = time.perf_counter()
             all_detections.extend(self._engines[name].recognize(processed))
             timing[f"engine:{name}"] = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        fused = fuse(all_detections) if len(routing.engines_to_run) > 1 else all_detections
+        fused = fuse(all_detections, weighted=fusion_weighted) if len(engine_names) > 1 else all_detections
         timing["fusion"] = time.perf_counter() - t0
 
-        ordered = _reading_order(fused)
-        return OCRResult(detections=ordered, quality=report, routing=routing, preprocessing_steps=steps, timing_sec=timing)
+        return _reading_order(fused), timing
 
     def run_batch(self, images: list[np.ndarray | str], **run_kwargs) -> list[OCRResult]:
         """Run each image independently through `run()`. Fails fast on the

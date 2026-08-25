@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ocr-resilience"
-version = "0.2.0"
-description = "A classical-CV preprocessing + multi-engine ensemble layer on top of existing OCR engines (EasyOCR, Tesseract, PaddleOCR) — no LLM, no trained model of its own."
+version = "0.3.0"
+description = "A classical-CV preprocessing + multi-engine ensemble layer on top of existing OCR engines (EasyOCR, Tesseract, PaddleOCR, RapidOCR) — no LLM, no trained model of its own."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -27,7 +27,8 @@ dependencies = [
 easyocr = ["easyocr>=1.7"]
 tesseract = ["pytesseract>=0.3.10"]
 paddleocr = ["paddleocr>=3.0.0", "paddlepaddle>=3.0.0"]
-all = ["easyocr>=1.7", "pytesseract>=0.3.10", "paddleocr>=3.0.0", "paddlepaddle>=3.0.0"]
+rapidocr = ["rapidocr>=2.0", "onnxruntime>=1.18"]
+all = ["easyocr>=1.7", "pytesseract>=0.3.10", "paddleocr>=3.0.0", "paddlepaddle>=3.0.0", "rapidocr>=2.0", "onnxruntime>=1.18"]
 benchmark = ["pandas>=2.0", "pillow>=10.0", "psutil>=5.9"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 

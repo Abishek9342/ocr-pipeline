@@ -3,11 +3,11 @@
     "systems": [
       "tesseract",
       "easyocr",
+      "paddleocr",
+      "rapidocr",
       "ours"
     ],
-    "systems_skipped": {
-      "paddleocr": "(InvalidArgument) Type of attribute: strides is not right.\n  [Hint: Expected attributes.at(\"strides\").dyn_cast<pir::ArrayAttribute>().at(i).isa<pir::Int32Attribute>() == true, but received attributes.at(\"strides\").dyn_cast<pir::ArrayAttribute>().at(i).isa<pir::Int32Attribute>():0 != true:1.] (at paddle\\fluid\\pir\\dialect\\operator\\ir\\pd_op3.cc:24692)\n"
-    },
+    "systems_skipped": {},
     "presets": [
       "clean",
       "light_blur",
@@ -27,30 +27,48 @@
   "summary": [
     {
       "system": "easyocr",
-      "mean_cer": 0.118184,
-      "mean_wer": 0.367273,
-      "mean_latency_sec": 0.294912,
-      "median_latency_sec": 0.264331,
-      "p95_latency_sec": 0.430754,
-      "mean_peak_memory_bytes": 3328970.545455
+      "mean_cer": 0.11148,
+      "mean_wer": 0.346591,
+      "mean_latency_sec": 0.782827,
+      "median_latency_sec": 0.671751,
+      "p95_latency_sec": 1.243005,
+      "mean_peak_memory_bytes": 3329056.654545
     },
     {
       "system": "ours",
-      "mean_cer": 0.053974,
-      "mean_wer": 0.22303,
-      "mean_latency_sec": 0.237794,
-      "median_latency_sec": 0.14326,
-      "p95_latency_sec": 0.564505,
-      "mean_peak_memory_bytes": 2487505.363636
+      "mean_cer": 0.033648,
+      "mean_wer": 0.179621,
+      "mean_latency_sec": 1.201753,
+      "median_latency_sec": 0.782521,
+      "p95_latency_sec": 2.82856,
+      "mean_peak_memory_bytes": 43373350.704545
+    },
+    {
+      "system": "paddleocr",
+      "mean_cer": 0.097181,
+      "mean_wer": 0.312424,
+      "mean_latency_sec": 0.211893,
+      "median_latency_sec": 0.208313,
+      "p95_latency_sec": 0.309,
+      "mean_peak_memory_bytes": 3610693.972727
+    },
+    {
+      "system": "rapidocr",
+      "mean_cer": 0.174612,
+      "mean_wer": 0.23803,
+      "mean_latency_sec": 1.074078,
+      "median_latency_sec": 1.026398,
+      "p95_latency_sec": 1.384614,
+      "mean_peak_memory_bytes": 161038762.590909
     },
     {
       "system": "tesseract",
-      "mean_cer": 0.166439,
-      "mean_wer": 0.313788,
-      "mean_latency_sec": 0.132762,
-      "median_latency_sec": 0.121199,
-      "p95_latency_sec": 0.160665,
-      "mean_peak_memory_bytes": 99515.0
+      "mean_cer": 0.167829,
+      "mean_wer": 0.314091,
+      "mean_latency_sec": 0.281212,
+      "median_latency_sec": 0.132049,
+      "p95_latency_sec": 0.806241,
+      "mean_peak_memory_bytes": 99524.490909
     }
   ]
 }

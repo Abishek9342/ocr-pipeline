@@ -60,52 +60,57 @@ image -> quality.assess()        classical CV metrics: blur, noise,
 
 Full run: 20 synthetic corpus images (10 sentences x printed + cursive-
 font "handwritten proxy" — see the honesty note below) x **all 11**
-degradation presets x {Tesseract alone, EasyOCR alone, this pipeline with
-both registered}. PaddleOCR is included in the harness but currently hits
-a genuine upstream bug in this environment (see below) and is
-automatically skipped, not silently dropped.
+degradation presets x {Tesseract, EasyOCR, PaddleOCR, RapidOCR — each
+alone, no preprocessing — vs. this pipeline pooling all four}.
 
-**Overall (all styles, all degradations) — `python -m benchmark.run_benchmark --presets all`:**
+**Overall (all styles, all degradations) — `python -m benchmark.run_benchmark --engines tesseract,easyocr,paddleocr,rapidocr,ours --presets all`:**
 
 | System | Mean CER ↓ | Mean WER ↓ | Mean latency (s) ↓ | P95 latency (s) ↓ | Mean peak memory ↓ |
 |---|---:|---:|---:|---:|---:|
-| **ours** | **0.0540** | **0.2230** | 0.238 | 0.565 | 2.49 MB |
-| easyocr\_alone | 0.1182 | 0.3673 | 0.295 | 0.431 | 3.33 MB |
-| tesseract\_alone | 0.1664 | 0.3138 | 0.133 | 0.161 | 0.10 MB |
+| **ours** | **0.0336** | **0.1796** | 1.202 | 2.829 | 43.4 MB |
+| paddleocr\_alone | 0.0972 | 0.3124 | 0.212 | 0.309 | 3.6 MB |
+| easyocr\_alone | 0.1115 | 0.3466 | 0.783 | 1.243 | 3.3 MB |
+| tesseract\_alone | 0.1678 | 0.3141 | 0.281 | 0.806 | 0.1 MB |
+| rapidocr\_alone | 0.1746 | 0.2380 | 1.074 | 1.385 | 161.0 MB |
 
 **Mean CER by degradation preset:**
 
-| Preset | ours | tesseract\_alone | easyocr\_alone | Who wins |
-|---|---:|---:|---:|---|
-| clean | 0.0166 | 0.0166 | 0.0249 | tie (ours/tesseract) |
-| light\_blur | 0.0143 | 0.0143 | 0.0415 | tie (ours/tesseract) |
-| heavy\_blur | **0.0146** | 0.0701 | 0.1358 | **ours** |
-| motion\_blur | 0.2992 | **0.2447** | 0.5614 | **tesseract** |
-| noisy | 0.0206 | **0.0164** | 0.0473 | tesseract (narrowly) |
-| salt\_pepper | **0.0192** | 1.0000 | 0.1213 | **ours** (tesseract alone: total failure) |
-| skewed | **0.0144** | 0.1245 | 0.2009 | **ours** |
-| low\_contrast | 0.0250 | **0.0209** | 0.0568 | tesseract (narrowly) |
-| smudged | 0.0270 | 0.0270 | 0.0541 | tie (ours/tesseract) |
-| jpeg\_compressed | 0.0142 | 0.0142 | 0.0449 | tie (ours/tesseract) |
-| combo\_hard | 0.1285 | 0.2821 | **0.0110** | **easyocr** |
+| Preset | ours | tesseract | easyocr | paddleocr | rapidocr | Who wins |
+|---|---:|---:|---:|---:|---:|---|
+| clean | 0.0166 | 0.0166 | 0.0249 | **0.0106** | 0.0544 | paddleocr |
+| light\_blur | 0.0143 | 0.0143 | 0.0415 | **0.0043** | 0.0558 | paddleocr |
+| heavy\_blur | **0.0065** | 0.0701 | 0.1358 | 0.0695 | 1.0000 (total failure) | **ours** |
+| motion\_blur | 0.1298 | 0.2447 | 0.5614 | 0.2327 | **0.1201** | rapidocr (narrowly) |
+| noisy | 0.0283 | 0.0166 | 0.0194 | **0.0081** | 0.0679 | paddleocr |
+| salt\_pepper | **0.0258** | 1.0000 (total failure) | 0.0732 | 0.6567 | 0.2128 | **ours** |
+| skewed | 0.0144 | 0.1245 | 0.2009 | **0.0064** | 0.0442 | paddleocr |
+| low\_contrast | 0.0250 | 0.0209 | 0.0568 | **0.0129** | 0.0562 | paddleocr |
+| smudged | 0.0270 | 0.0270 | 0.0541 | **0.0081** | 0.0704 | paddleocr |
+| jpeg\_compressed | **0.0142** | 0.0142 | 0.0449 | 0.0437 | 0.0819 | tie (ours/tesseract) |
+| combo\_hard | 0.0682 | 0.2973 | **0.0133** | 0.0160 | 0.1571 | **easyocr** |
 
-**This is not "the pipeline wins everywhere."** It wins outright on heavy
-blur, skew, and (dramatically) salt-and-pepper noise; it ties the better
-baseline on clean/light-blur/smudged/JPEG-compressed; it loses narrowly to
-plain Tesseract on noisy/low-contrast images; it loses clearly to plain
-Tesseract on motion blur; and it loses clearly to plain EasyOCR on the
-stacked `combo_hard` case. **Its actual advantage is in the overall mean:
-it never catastrophically fails** — it avoids both Tesseract's complete
-blank output on salt-and-pepper noise (CER 1.0) and EasyOCR's near-total
-failure on motion blur (CER 0.56) — which is why its *average* CER (0.054)
-beats both single engines' averages even though it isn't the single best
-performer on every row. Whether "more consistent, occasionally not the
-single best" or "always the single best" matters more depends on your use
-case; this table is what lets you decide, not a headline claim.
+**This is not "the pipeline wins everywhere," and pooling four engines
+didn't change that.** Single-engine PaddleOCR alone is a genuinely strong
+baseline — it wins outright on 6 of 11 presets (clean, light blur, general
+noise, skew, low contrast, smudged) and is dramatically faster (0.21s vs.
+1.2s mean). Plain EasyOCR alone still wins the stacked `combo_hard` case.
+**What the ensemble actually buys is avoiding each single engine's
+worst-case catastrophic failure**: Tesseract goes completely blank on
+salt-and-pepper noise (CER 1.0), RapidOCR goes completely blank on heavy
+Gaussian blur (CER 1.0), and PaddleOCR falls apart on salt-and-pepper
+(0.66) — three different engines, three different specific blind spots,
+none of which the pipeline inherits, because it never depends on only one
+engine for a case severe enough to trigger ensembling. That's also
+precisely why its mean latency (1.2s) and memory (43MB — RapidOCR's own
+ONNX runtime allocation alone averages 161MB when it runs) are much higher
+than any single engine: consistency here is bought with real, measured
+compute cost, not free. Whether that trade is worth it depends on your
+use case — this table is what lets you decide, not a headline claim.
 
-Run `python -m benchmark.run_benchmark --presets all` yourself; raw
-per-image results, an aggregated `summary.csv`, per-stage `latency.csv`,
-and a machine-readable `benchmark.json` land in `benchmark/results/`.
+Run `python -m benchmark.run_benchmark --engines tesseract,easyocr,paddleocr,rapidocr,ours --presets all`
+yourself; raw per-image results, an aggregated `summary.csv`, per-stage
+`latency.csv`, and a machine-readable `benchmark.json` land in
+`benchmark/results/`.
 
 ## Ablation Study
 
@@ -217,6 +222,28 @@ this README was written:
    of pixels sharply off their local 3x3 median) and gating a median
    filter — the standard, specific fix for impulse noise — on it. CER on
    that preset dropped from 1.000 to 0.019.
+8. **PaddleOCR crashed the first time it actually ran inside a real
+   multi-engine ensemble**, after its model-loading bug (above) was fixed
+   — `ValueError: not enough values to unpack (expected 3, got 2)`, deep
+   inside PaddleX's own resize step (`h, w, _ = img.shape`). The shared
+   pipeline preprocessing outputs grayscale (2D) images; Tesseract and
+   EasyOCR both accept that directly, so this was invisible in every
+   prior single/two-engine test — only surfaced once PaddleOCR was one of
+   three-plus engines actually pooled together. Fixed by converting
+   grayscale input back to 3-channel BGR in `PaddleOCRAdapter.recognize()`.
+9. **Adding a confidence-weighted vote assumes different engines'
+   confidence scores are on the same scale — investigated directly, and
+   they're not.** On `combo_hard`, Tesseract reported *higher* confidence
+   than EasyOCR even in a case where Tesseract was the wrong answer (0.802
+   vs. 0.679, but EasyOCR's text had lower CER), which structurally biases
+   ROVER's weighted vote toward whichever engine over-reports confidence
+   regardless of correctness. Tested the obvious fix (unweighted majority
+   voting) directly: it helps on `combo_hard` (0.076 -> 0.061 CER) but
+   *hurts* on `heavy_blur` (0.031 -> 0.097) and `motion_blur` (0.287 ->
+   0.405) — net effect across presets unfavorable, so the default stays
+   confidence-weighted (`OCRPipeline.run(fusion_weighted=False)` is kept
+   as a real, tested option, not adopted as the default). See
+   `docs/failure_analysis.md` for the full experiment.
 
 Each of these has a regression test in `tests/` reproducing the exact
 failure mode, not just testing the fixed behavior in isolation. #5 and #6
@@ -236,19 +263,24 @@ that a passing one means nothing is wrong.
   produce — treat the handwriting numbers here as a lower bound on
   real-world difficulty, not an equivalent test. No real handwriting
   corpus (e.g. IAM) was available in this environment.
-- **PaddleOCR's adapter is written and API-correct** (verified against
-  the actually-installed v3 API via `inspect.signature`, not assumed from
-  documentation — several tutorials still document the old v2
-  `use_angle_cls`/`.ocr(cls=True)` calling convention) but hits a genuine
-  upstream bug in this development environment — a PIR/PaddlePaddle
-  attribute-type mismatch (`strides` attribute expected as
-  `pir::Int32Attribute`, exported as something else) when loading the
-  PP-OCRv6 detector model, reproduced consistently in this environment —
-  so it's automatically skipped from the benchmark above (the harness
-  detects the load failure and reports it, rather than crashing or
-  silently omitting it). The adapter should work wherever that upstream
-  bug isn't present; `benchmark/run_benchmark.py --engines ...,paddleocr,...`
-  will simply include it once it does.
+- **PaddleOCR now genuinely works, but needed two real fixes to get
+  there** (previously skipped entirely — see the debugging story below,
+  findings #6 and #7). Its default model version (PP-OCRv5/v6 detector)
+  hits a reproducible upstream PaddlePaddle PIR attribute-type mismatch on
+  load in this environment; `PaddleOCRAdapter` defaults to the older
+  `ocr_version="PP-OCRv4"` (configurable) to avoid it, and separately
+  needed its grayscale-input path fixed once it actually ran inside a
+  multi-engine ensemble for the first time.
+- **RapidOCR** (a fourth engine, the same PP-OCR model family as
+  PaddleOCR but exported to ONNX Runtime with no PyTorch/Paddle/TF
+  dependency) was added after researching the current open-source OCR
+  ecosystem — see `docs/engine_landscape.md` for the full comparison
+  (Surya, docTR/OnnxTR, MMOCR, Kraken, TrOCR also evaluated, and why they
+  weren't chosen). It's markedly weaker on this benchmark than expected
+  from its "lightweight" design (mean CER 0.175, worst of the four single
+  engines, and a complete failure on heavy blur) — a genuinely disappointing
+  result worth stating plainly rather than glossing over just because it
+  was the recommended pick going in.
 - This is a **synthetic, rendered-text benchmark**, not real scanned
   documents or photographs — see Limitations below.
 
@@ -306,15 +338,23 @@ ocr-pipeline ./scans/ --output results/     # batch: one JSON per input, one bad
   removal; `build_pipeline()` composes only what the quality report says
   is needed.
 - `router.py` — quality-aware single-engine-vs-ensemble routing.
-- `engines.py` — `OCREngine` protocol + Tesseract/EasyOCR/PaddleOCR
-  adapters.
+- `engines.py` — `OCREngine` protocol + Tesseract/EasyOCR/PaddleOCR/
+  RapidOCR adapters.
 - `fusion.py` — ROVER-style multi-engine consensus (spatial grouping via
-  overlap-ratio + union-find, then confidence-weighted character voting).
+  overlap-ratio + union-find, then confidence-weighted character voting;
+  `weighted=False` for unweighted majority voting — see the debugging
+  story finding #9 for why weighted stays the default).
 - `postprocessing.py` — whitespace/unicode normalization, confidence
   filtering, dedup — text-level only, never overwrites the raw output.
+- `scoring.py` — an optional composite score with named, published
+  weights and a `rank_stability()` check for whether a ranking claim
+  survives reasonable reweighting — never a replacement for the
+  underlying per-metric numbers.
 - `pipeline.py` — orchestrates the above; `OCRPipeline.run()` exposes
-  `skip_preprocessing` / `force_step` / `force_ensemble` ablation hooks
-  used by `benchmark/run_ablation.py`.
+  `skip_preprocessing` / `force_step` / `force_ensemble` / `fusion_weighted`
+  ablation hooks (used by `benchmark/run_ablation.py`) plus
+  `min_confidence_for_fallback` for a genuine second-pass escalation to
+  every available engine when the first pass's confidence is low.
 - `cli.py` — the `ocr-pipeline` command.
 
 ## Limitations
@@ -325,37 +365,42 @@ ocr-pipeline ./scans/ --output results/     # batch: one JSON per input, one bad
   screenshots. The relative rankings above may not transfer to those.
 - The "handwritten" style is a cursive font, not real handwriting (see
   Honesty notes).
+- English only — no multilingual testing has been done.
 - Single-column reading order only — `_reading_order`'s line-clustering
   heuristic has no multi-column/layout-detection logic.
 - No perspective/four-point document correction, no orientation
   (90/180/270°) detection — only sub-degree deskew.
-- PaddleOCR is currently non-functional in this development environment
-  (see Honesty notes) and untested here beyond adapter-level unit tests
-  with mocked I/O.
 - The pipeline is not the single best system on every degradation type
-  (see Results) — plain Tesseract wins on motion blur and is competitive
-  on general Gaussian noise/low contrast; plain EasyOCR wins on the
-  stacked `combo_hard` case.
+  (see Results) — single-engine PaddleOCR wins on 6 of 11 presets, and
+  plain EasyOCR wins the stacked `combo_hard` case.
 - Confidence scores are used as-is from each engine with no cross-engine
-  calibration — Tesseract's, EasyOCR's, and PaddleOCR's confidence scales
-  aren't verified to mean the same thing, which matters for the
-  confidence-weighted fusion vote.
+  *calibration* (only the fusion-weighting question was tested — see
+  finding #9; a real per-engine calibration curve, e.g. temperature
+  scaling against ground truth, hasn't been attempted).
+- No real (non-synthetic) dataset, no dev/val/test split, no held-out
+  challenge set, no CI regression gate on accuracy/latency — see
+  `docs/engineering_backlog.md` for the full list of what a "world-class"
+  version of this project would still need and why each item isn't done
+  here (resource constraints: real licensed datasets, multilingual
+  corpora, GPU budget, or simply scope).
 
 ## Roadmap
 
 - A real (non-synthetic) benchmark set — scanned documents, receipts, or
   a licensed handwriting corpus (e.g. IAM) — to validate whether the
   synthetic-benchmark rankings above transfer to real images.
-- Investigate *why* multi-engine fusion loses to EasyOCR alone on
-  `combo_hard` and to Tesseract alone on `motion_blur` — likely a
-  confidence-calibration mismatch between engines feeding the ROVER vote;
-  worth an ablation of confidence-weighting vs. unweighted majority vote.
+- A real per-engine confidence calibration (not just the weighted-vs-
+  unweighted fusion test already done) — e.g. fit each engine's own
+  confidence-to-correctness curve against ground truth, then normalize
+  before voting.
 - Perspective/four-point document correction and orientation detection.
-- A confidence-based second-attempt fallback (re-run with an alternate
-  preprocessing configuration when the first attempt's confidence is low)
-  — mentioned as a design goal, not yet implemented or benchmarked.
-- PaddleOCR support once the upstream PIR/PaddlePaddle bug blocking it in
-  this environment is resolved.
+- docTR/OnnxTR as a fifth engine (see `docs/engine_landscape.md` — the
+  strongest not-yet-added candidate from that research).
+- Multilingual benchmarking — every engine here supports far more than
+  English; none of that capability has been exercised or measured.
+- A held-out challenge set and CI regression gating (see
+  `docs/engineering_backlog.md`) once there's more than one contributor
+  for "don't tune against the test set" discipline to matter for.
 
 ## Running the tests / benchmark yourself
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+import cv2
 import numpy as np
 
 
@@ -108,20 +109,39 @@ class PaddleOCRAdapter:
     `.predict()` returns one dict-like result object per image (with
     `rec_texts`/`rec_scores`/`rec_polys` keys) instead of the old nested
     `[[bbox, (text, conf)], ...]` list structure. Verified against the
-    actually-installed version, not assumed from documentation."""
+    actually-installed version, not assumed from documentation.
+
+    `ocr_version` defaults to "PP-OCRv4", NOT the library's own default
+    (PP-OCRv5/v6 detector models) — the newer detector models hit a real,
+    reproducible upstream bug in this environment: a PIR (Paddle
+    Intermediate Representation) attribute-type mismatch
+    (`strides` expected as `pir::Int32Attribute`, exported as something
+    else) that crashes on model load, on two separate PaddlePaddle/
+    PaddleOCR version combinations. PP-OCRv4's mobile det/rec models don't
+    hit it and were verified end-to-end against this package's own
+    benchmark corpus. Pass `ocr_version="PP-OCRv6"` explicitly if your
+    environment doesn't have this bug and you want the newer models."""
 
     name = "paddleocr"
 
-    def __init__(self, lang: str = "en"):
+    def __init__(self, lang: str = "en", ocr_version: str = "PP-OCRv4"):
         from paddleocr import PaddleOCR
         self._ocr = PaddleOCR(
             lang=lang,
+            ocr_version=ocr_version,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
         )
 
     def recognize(self, image: np.ndarray) -> list[Detection]:
+        if image.ndim == 2:
+            # PaddleX's internal resize step does `src_h, src_w, _ = img.shape`,
+            # which crashes on a 2D (grayscale) array — Tesseract/EasyOCR both
+            # accept grayscale directly, so this pipeline's shared preprocessing
+            # output (always grayscale) worked for those but broke PaddleOCR the
+            # first time all three engines actually ran together in one ensemble.
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         results = self._ocr.predict(image)
         out = []
         for result in results:
@@ -139,8 +159,43 @@ class PaddleOCRAdapter:
         return out
 
 
+class RapidOCRAdapter:
+    """RapidOCR: the same PP-OCR model family as PaddleOCRAdapter above, but
+    exported to ONNX Runtime — no PyTorch/PaddlePaddle/TensorFlow dependency
+    at all, a much smaller install (~30MB wheel vs. PaddleOCR's multi-
+    hundred-MB framework stack). Added specifically as a lighter-weight
+    alternative for CPU-only/CI environments, not because PaddleOCR needed
+    replacing. `RapidOCR()(image)` returns a `RapidOCROutput` dataclass
+    with `.boxes` (Nx4x2 polygon array, or None if nothing detected),
+    `.txts`, `.scores` — verified directly against the installed API via
+    `inspect.signature`, matching this codebase's convention of never
+    assuming a calling convention from documentation alone."""
+
+    name = "rapidocr"
+
+    def __init__(self):
+        from rapidocr import RapidOCR
+        self._ocr = RapidOCR()
+
+    def recognize(self, image: np.ndarray) -> list[Detection]:
+        result = self._ocr(image)
+        if result.boxes is None:
+            return []
+        out = []
+        for box, text, score in zip(result.boxes, result.txts, result.scores):
+            xs = [p[0] for p in box]
+            ys = [p[1] for p in box]
+            out.append(Detection(
+                text=text, confidence=float(score),
+                bbox=(int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))),
+                engine=self.name,
+            ))
+        return out
+
+
 AVAILABLE_ENGINES = {
     "easyocr": EasyOCRAdapter,
     "tesseract": TesseractAdapter,
     "paddleocr": PaddleOCRAdapter,
+    "rapidocr": RapidOCRAdapter,
 }
