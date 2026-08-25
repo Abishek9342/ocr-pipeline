@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from benchmark.corpus import SENTENCES, build_corpus
@@ -42,13 +44,24 @@ def test_stable_seed_differs_for_different_inputs():
     assert stable_seed("a.png", "skewed") != stable_seed("a.png", "noisy")
 
 
-def test_apply_degradation_with_stable_seed_is_reproducible(tmp_path):
+@pytest.mark.parametrize("preset", sorted(DEGRADATION_PRESETS))
+def test_apply_degradation_with_stable_seed_is_reproducible_for_every_preset(tmp_path, preset):
+    """Regression for a real bug: `gaussian_noise`/`salt_and_pepper` used
+    to call `np.random.normal`/`np.random.randint` directly, reading
+    numpy's GLOBAL random state and ignoring the `rng` parameter every
+    other degradation function respects — so `noisy`, `salt_pepper`, and
+    `combo_hard` (which chains gaussian_noise) were NOT actually
+    seed-reproducible despite `stable_seed()`'s whole purpose being
+    reproducibility. The pre-existing version of this test only checked
+    `skewed`, which never used numpy's global state and so never caught
+    it — parametrized over every preset specifically so a future
+    non-reproducible degradation can't hide the same way."""
     manifest = build_corpus(str(tmp_path))
     import cv2
     img = cv2.imread(manifest[0]["path"])
 
-    seed = stable_seed(manifest[0]["path"], "skewed")
-    out_a = apply_degradation(img, "skewed", seed=seed)
-    out_b = apply_degradation(img, "skewed", seed=seed)
+    seed = stable_seed(manifest[0]["path"], preset)
+    out_a = apply_degradation(img, preset, seed=seed)
+    out_b = apply_degradation(img, preset, seed=seed)
 
-    assert (out_a == out_b).all()
+    assert (out_a == out_b).all(), f"preset '{preset}' is not seed-reproducible"

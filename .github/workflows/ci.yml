@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch: {}  # enables manually running the benchmark-regression job below on demand
 
 jobs:
   test:
@@ -46,3 +47,34 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  # Manual-only (workflow_dispatch), not on every push/PR — the full 11-preset
+  # x 5-engine benchmark takes minutes, and Tesseract/EasyOCR model downloads
+  # add real setup time. Mission section 26's "tiered CI strategy for heavy
+  # benchmarks" applied literally: this is the heavy tier, opt-in only.
+  benchmark-regression:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Tesseract binary + package with tesseract/easyocr/benchmark extras
+        run: |
+          sudo apt-get -qq update && sudo apt-get -qq install -y tesseract-ocr
+          pip install -e ".[tesseract,easyocr,benchmark]"
+      - name: Run a fast benchmark subset
+        run: |
+          python -m benchmark.run_benchmark --engines tesseract,easyocr,ours \
+            --presets clean,heavy_blur,skewed --out /tmp/ci_bench
+      - name: Check for regression against the stored baseline
+        run: |
+          python scripts/check_regression.py \
+            --current /tmp/ci_bench/benchmark.json \
+            --baseline benchmark/results/baseline_summary.json \
+            --max-cer-increase 0.03 --max-latency-increase-pct 40
+        # Thresholds are looser than a full-preset baseline comparison would use,
+        # since this subset (3 of 11 presets) is a different, noisier sample than
+        # the baseline's full 11-preset run — not a strict apples-to-apples check,
+        # a coarse "did something break badly" signal.

@@ -4,6 +4,62 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - Unreleased
+
+See `docs/NEXT_PHASE_REPORT.md` for the full handoff on adaptive engine
+selection + confidence calibration; `docs/engine_selection_report.md`,
+`docs/confidence_calibration_report.md`, and `docs/routing_benchmark_report.md`
+for the detailed evidence behind it.
+
+### Added
+- `ocr_resilience/engine_selection.py` — quality-aware single-engine
+  selection (`select_primary_engine`), replacing `router.decide()`'s
+  previous `available_engines[0]` (pure registration order) with
+  interpretable rules keyed on `QualityReport`'s continuous fields,
+  derived from this project's own condition-x-engine benchmark evidence.
+  Not a trained/learned model — the 20-image corpus is far too small for
+  that (see `docs/engineering_backlog.md`'s meta-dataset schema section).
+- `rank_fallback_chain()` + a real two-tier confidence-based fallback:
+  `OCRPipeline`'s fallback now tries one ranked additional engine before
+  escalating to the full ensemble, instead of jumping straight from one
+  engine to all of them.
+- `ocr_resilience/calibration.py` — binned/histogram confidence
+  calibration, reliability curves, Expected Calibration Error, and
+  calibrated-confidence fusion, investigated as a candidate fix for the
+  cross-engine confidence-scale mismatch documented in
+  `docs/failure_analysis.md`. Result: rejected as a default (see below) —
+  kept as a real, tested, documented capability, not wired into the
+  pipeline by default.
+- `benchmark/analyze_routing.py` — condition x engine strength table and
+  routing regret analysis (OLD vs. NEW router), consuming
+  `benchmark/run_benchmark.py`'s now-enhanced row schema (per-row
+  confidence, detection count, routing reason, catastrophic-failure flag).
+- `docs/reproduce_calibration_analysis.py` — standalone reproduction
+  script for the calibration report's numbers.
+
+### Fixed
+- `engine="auto"` resolution (`OCR()`'s documented default usage) never
+  included RapidOCR in its priority list — added as a fourth engine in a
+  prior phase without updating this separate list, so `OCR()` would
+  silently never use it even when installed. Found during this phase's
+  Phase 1 router audit.
+- **A real bug in this phase's own new analysis code**:
+  `analyze_routing.routing_regret()`'s "top-1" computation compared
+  engine *names* against whichever engine `pandas.DataFrame.idxmin()`
+  returned for the best CER — which resolves ties (common at CER=0.0 on
+  easy images) to whichever engine's rows appear first in
+  `raw_results.csv` (always Tesseract, by construction). This made the
+  new quality-aware router look far worse than it is (28% apparent top-1
+  vs. the corrected 60%) until fixed to compare CER *values*, not names.
+- **A third reproducibility gap, this time in the confidence-calibration
+  research itself**: an inline (not saved-to-a-script) run of the
+  raw-vs-calibrated fusion comparison produced numbers that did not
+  reproduce when the identical logic was re-run via a saved script —
+  attributed to EasyOCR's underlying PyTorch CPU inference not
+  guaranteeing deterministic execution order across process invocations.
+  The corrected, twice-confirmed-reproducible numbers are what's
+  published in `docs/confidence_calibration_report.md`.
+
 ## [0.3.0] - Unreleased
 
 See `MISSION_REPORT.md` for the full section-by-section status against
@@ -11,6 +67,21 @@ this project's research mission brief, including what's honestly not
 done yet and why.
 
 ### Added
+- `benchmark/run_robustness.py` — severity-sweep robustness curves (4
+  corruption types x 5 severity levels each), not just one CER number per
+  degradation type. Found a real, previously-invisible issue: Tesseract
+  has a sharp failure cliff on Gaussian noise between sigma 25 and 50
+  (complete failure, CER 1.0), which the main benchmark's fixed-severity
+  `noisy` preset (sigma=25) sits just below — see `docs/robustness_curves.md`.
+- `scripts/check_regression.py` + `benchmark/results/baseline_summary.json`
+  — a CI regression gate comparing a fresh benchmark run's CER/latency
+  against a stored baseline, with explicit thresholds. Wired into
+  `.github/workflows/ci.yml` as a manual (`workflow_dispatch`-only)
+  `benchmark-regression` job — the full benchmark is too slow for every
+  push, so this is opt-in rather than blocking, per a tiered CI strategy.
+- `ocr_resilience/debug.py` + `OCRPipeline.run(debug_dir=...)` — visual
+  debugging export (original/preprocessed/annotated-with-boxes images).
+  Off by default, zero cost unless requested.
 - `OCRPipeline.run(min_confidence_for_fallback=...)` — a genuine
   confidence-based second-pass escalation to every available engine when
   the first pass's confidence is low, with a real regression test suite
@@ -64,6 +135,18 @@ done yet and why.
   (PyPI trusted publishing on a version tag).
 
 ### Fixed
+- **A second, previously-undiscovered reproducibility hole**: `gaussian_noise()`
+  and `salt_and_pepper()` in `benchmark/degrade.py` called
+  `np.random.normal`/`np.random.randint` directly, reading NumPy's own
+  *global* random state and ignoring the `rng` parameter every other
+  degradation function respects. So the `noisy`, `salt_pepper`, and
+  `combo_hard` presets were silently NOT seed-reproducible, despite
+  `stable_seed()`'s entire purpose being reproducibility, and despite an
+  earlier fix (above) for a *different* seeding bug. Found while building
+  `benchmark/run_robustness.py`. Fixed by deriving a seeded
+  `numpy.random.Generator` from the same `rng` object. The existing
+  reproducibility test only checked the `skewed` preset (which never
+  touched numpy's global state) — now parametrized over every preset.
 - **`OCRResult.text` joined every detection with `"\n"` regardless of
   which text line it belonged to.** Word-level detections on the same
   visual line (e.g. Tesseract's default one-box-per-word output) rendered

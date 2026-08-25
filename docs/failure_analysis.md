@@ -68,6 +68,16 @@ the specific decimal values here as representative, not exact — the
 qualitative conclusion (reject switching the default) is what's load-
 bearing, and it held across both runs.
 
+**Follow-up**: a full per-engine calibration investigation (fitting each
+engine's confidence-to-correctness curve directly, rather than just
+testing weighted-vs-unweighted) confirmed the miscalibration is real and
+substantial (EasyOCR's Expected Calibration Error is 0.20, vs.
+PaddleOCR's 0.015) — but correcting for it via calibrated-confidence
+fusion did not improve, and measurably hurt, fused output in a separate
+controlled comparison. See `docs/confidence_calibration_report.md` for
+the full investigation and why it was rejected as a fix despite the
+underlying miscalibration being genuine.
+
 ## Failure Case B: `motion_blur` (Tesseract/RapidOCR beat EasyOCR and the pipeline is close behind RapidOCR)
 
 With all four engines pooled, the pipeline's `motion_blur` CER (0.130) is
@@ -85,15 +95,22 @@ With all four engines pooled, PaddleOCR alone is the best single system
 on both (`noisy`: 0.0081 vs. the pipeline's 0.0283; `low_contrast`: 0.0129
 vs. 0.0250). These are the mildest degradations in the suite (a single
 flag typically fires, so the router often stays single-engine rather than
-ensembling) — the pipeline's single-engine choice on these cases is
-whichever engine is registered first (`next(iter(self._engines))` in
+ensembling) — the pipeline's single-engine choice on these cases USED TO
+BE whichever engine is registered first (`available_engines[0]` in
 `router.decide`), not necessarily the best available one for that
-specific condition. **This is a real, identified architectural gap**: the
-router picks an engine by registration order for the "easy" path, not by
-any per-condition strength ranking. A quality-aware single-engine
-*choice* (not just ensemble-or-not) is the natural next step — see
-`docs/engineering_backlog.md`'s "learned/quality-aware engine selection"
-item.
+specific condition.
+
+**Resolved**: `ocr_resilience/engine_selection.py::select_primary_engine()`
+replaces that registration-order pick with interpretable rules keyed on
+`QualityReport`'s continuous fields — including an explicit rule
+preferring PaddleOCR for `is_low_contrast` and for high-severity general
+noise, directly targeting these two cases. Measured effect across all 11
+conditions (not just these two): top-1 accuracy 56.8% -> 59.6%, mean
+regret 0.1696 -> 0.1199 — see `docs/engine_selection_report.md` and
+`docs/routing_benchmark_report.md` for the full evidence. Still
+incomplete: only 4 of 11 conditions have an explicit rule; extending
+coverage to the rest is documented as the next cheapest improvement in
+`docs/engineering_backlog.md`.
 
 ## Failure Case E: PaddleOCR (previously failing entirely)
 

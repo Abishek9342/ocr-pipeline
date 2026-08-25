@@ -31,13 +31,47 @@ project would still need, why it isn't here, and what it would take.
 
 - **A learned/ML pipeline router** (mission sections 8, 11 tier 4-5,
   section 45's "can a lightweight router predict the best path?"). This
-  needs a meta-dataset of (image features, pipeline variant, engine,
-  CER/WER/latency/confidence) rows large enough to train something
-  non-trivial — the current corpus (20 images x 11 presets x a handful of
-  variants) is two-to-three orders of magnitude too small to train a
-  decision tree/GBM without just memorizing it. `benchmark/run_ablation.py`
-  already logs most of the needed columns; scaling the corpus (see "real
-  dataset" above) is the actual prerequisite, not a modeling problem.
+  needs a meta-dataset large enough to train something non-trivial — the
+  current corpus (20 images x 11 presets) is two-to-three orders of
+  magnitude too small; a model trained on it would memorize, not
+  generalize, and reporting that as "learned routing" would itself be the
+  kind of fake result this project's own ground rule forbids. Deliberately
+  NOT attempted — see the exact schema and prerequisites below instead.
+
+  **Meta-dataset schema** (every field `benchmark/run_benchmark.py`'s
+  enhanced row schema already logs, marked ✅; not yet logged, marked ⬜):
+
+  ```text
+  image_id                  ✅ (raw_results.csv)
+  image_features            ⬜ (QualityReport's fields aren't logged per-row
+                                 yet — assess() is re-run in analyze_routing.py
+                                 from the same deterministic seed instead)
+  engine                    ✅ (system column)
+  pipeline / preprocessing  ✅ (available via OCRResult.preprocessing_steps
+                                 for "ours" rows; not logged as a raw_results.csv
+                                 column yet)
+  raw_confidence            ✅ (mean_confidence)
+  calibrated_confidence     ⬜ (this phase's confidence-calibration work)
+  CER / WER                 ✅
+  latency                   ✅
+  memory                    ✅ (peak_memory_bytes)
+  success / failure         ✅ (catastrophic_failure, plus cer itself)
+  failure_type              ⬜ (no automatic categorization — missing text
+                                 vs. wrong text vs. complete blank isn't
+                                 classified per-row, only investigated by
+                                 hand per case in docs/failure_analysis.md)
+  routing_decision           ✅ (routing_reason, for "ours" rows)
+  ```
+
+  **What would justify moving to learned routing**: (1) a real, non-
+  synthetic dataset at least ~500-1000+ images across diverse real
+  document types (mission section 14's gap — the actual blocker), (2) the
+  `image_features`/`failure_type` columns above actually populated per
+  row, not re-derived after the fact, (3) a held-out test set that the
+  model's own training never touches (mission section 21/22's gap), and
+  (4) a simple baseline (e.g. this phase's rule-based `select_primary_engine`)
+  to compare the learned model against — a learned router that doesn't
+  beat the interpretable rules isn't worth the loss of interpretability.
 - **Newer VLM-based OCR baselines** (PaddleOCR-VL, GOT-OCR2.0, dots.ocr,
   olmOCR, DeepSeek-OCR — see `docs/engine_landscape.md`) are the current
   document-parsing SOTA but are GPU-first in their reference deployments;
@@ -47,19 +81,12 @@ project would still need, why it isn't here, and what it would take.
 ## Buildable, but deliberately deferred this round (scope, not blockers)
 
 - **Statistical rigor beyond what exists**: `benchmark/run_benchmark.py`
-  reports means/median/P95 latency already; it does NOT report confidence
-  intervals on CER/WER, nor repeated-run latency variance. With a 20-image
-  corpus, a confidence interval would be wide enough to not change any
-  conclusion in this README — worth adding once the corpus is larger.
-- **CI regression gating** (mission section 26): no GitHub Actions step
-  compares a PR's benchmark output against a stored baseline and fails on
-  regression. The full benchmark (all 11 presets x up to 5 systems) takes
-  minutes, too slow for every push; a fast subset + threshold-check script
-  is a reasonable next addition, not built this round.
-- **Visual debugging export** (mission section 34: dump original/
-  preprocessed/detected-region images side by side). Genuinely useful for
-  future debugging, not built — no benchmark finding in this pass depended
-  on it (text-level before/after was sufficient for every bug found).
+  reports means/median/P95 latency already, and `benchmark/run_robustness.py`
+  now adds severity-sweep curves (mission section 18 — done, see
+  `docs/robustness_curves.md`). Still missing: confidence intervals on
+  CER/WER and repeated-run latency variance. With a 20-image corpus, a
+  confidence interval would be wide enough to not change any conclusion
+  in this README — worth adding once the corpus is larger.
 - **Cascading compute tiers as a fully general N-tier system** (mission
   section 11). What exists: quality assessment (tier 0) -> adaptive
   single/multi-engine routing (tiers 1-3) -> confidence-based fallback to
@@ -70,13 +97,18 @@ project would still need, why it isn't here, and what it would take.
   describes, and building further tiers without a case that needs them
   would be exactly the "add complexity nobody asked for" anti-pattern the
   mission itself warns against.
-- **Quality-aware single-engine selection** (identified as a real gap in
-  `docs/failure_analysis.md`, Failure Cases C/D): the router currently
-  picks the first-registered engine for "easy" images regardless of which
-  engine is actually strongest for that specific condition. A real
-  improvement candidate, not implemented — would need per-condition
-  engine-strength data (which the benchmark corpus, expanded, could
-  provide).
+- ~~**Quality-aware single-engine selection**~~ — **done**, see
+  `ocr_resilience/engine_selection.py` and `docs/engine_selection_report.md`.
+  Covers 4 of 11 benchmarked conditions with explicit rules; the
+  remaining 7 still fall through to registration order (which happens to
+  coincide with reasonable choices for several of them). Extending
+  coverage to the rest is now the cheapest remaining improvement — the
+  condition-x-engine evidence for it already exists in
+  `benchmark/results/condition_engine_table.csv`.
+- **Condition-aware ranked fallback**: `rank_fallback_chain()` (added
+  alongside the selection work above) uses one aggregate engine ranking
+  for ALL conditions, not a per-condition one. A real, cheap next step —
+  same data source as the item above.
 - **Research notebooks / additional Kaggle notebooks** (mission sections
   35, 37: 8 research notebooks, 4 Kaggle notebooks). One executable
   notebook exists (`notebooks/ocr_resilience_benchmark.ipynb`, covering
@@ -97,5 +129,9 @@ Confidence as a first-class concept (`OCRResult.confidence`), a
 composite-score module with rank-stability checking (`ocr_resilience/scoring.py`),
 confidence-based fallback (`OCRPipeline.run(min_confidence_for_fallback=...)`),
 the full failure-case investigation for Priority 6 (`docs/failure_analysis.md`),
-and PaddleOCR actually working (not skipped) are all done — see
-`MISSION_REPORT.md` for the full per-section status.
+PaddleOCR actually working (not skipped), quality-aware single-engine
+selection, ranked (not all-at-once) confidence-based fallback escalation,
+and binned confidence calibration (investigated and honestly rejected as
+a fusion-weighting default — see `docs/confidence_calibration_report.md`)
+are all done — see `MISSION_REPORT.md` and `docs/NEXT_PHASE_REPORT.md`
+for the full per-section status.

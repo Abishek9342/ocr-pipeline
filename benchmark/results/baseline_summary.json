@@ -1,0 +1,57 @@
+{
+  "easyocr": {
+    "system": "easyocr",
+    "mean_cer": 0.121333,
+    "mean_wer": 0.362576,
+    "mean_latency_sec": 0.961133,
+    "median_latency_sec": 0.903705,
+    "p95_latency_sec": 1.480778,
+    "mean_peak_memory_bytes": 3328867.2,
+    "mean_confidence": 0.685009,
+    "catastrophic_failure_rate": 0.0
+  },
+  "ours": {
+    "system": "ours",
+    "mean_cer": 0.031924,
+    "mean_wer": 0.173939,
+    "mean_latency_sec": 1.233847,
+    "median_latency_sec": 0.92413,
+    "p95_latency_sec": 3.281585,
+    "mean_peak_memory_bytes": 44709149.468182,
+    "mean_confidence": 0.890396,
+    "catastrophic_failure_rate": 0.004545
+  },
+  "paddleocr": {
+    "system": "paddleocr",
+    "mean_cer": 0.110792,
+    "mean_wer": 0.322803,
+    "mean_latency_sec": 0.197506,
+    "median_latency_sec": 0.198559,
+    "p95_latency_sec": 0.266089,
+    "mean_peak_memory_bytes": 3610533.790909,
+    "mean_confidence": 0.904099,
+    "catastrophic_failure_rate": 0.05
+  },
+  "rapidocr": {
+    "system": "rapidocr",
+    "mean_cer": 0.171781,
+    "mean_wer": 0.238182,
+    "mean_latency_sec": 1.212035,
+    "median_latency_sec": 1.271512,
+    "p95_latency_sec": 1.496222,
+    "mean_peak_memory_bytes": 161038600.409091,
+    "mean_confidence": 0.854306,
+    "catastrophic_failure_rate": 0.127273
+  },
+  "tesseract": {
+    "system": "tesseract",
+    "mean_cer": 0.179002,
+    "mean_wer": 0.320455,
+    "mean_latency_sec": 0.19972,
+    "median_latency_sec": 0.142547,
+    "p95_latency_sec": 0.665254,
+    "mean_peak_memory_bytes": 99366.65,
+    "mean_confidence": 0.731296,
+    "catastrophic_failure_rate": 0.140909
+  }
+}

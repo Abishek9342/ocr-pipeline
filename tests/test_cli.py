@@ -85,3 +85,22 @@ def test_cli_rejects_unknown_engine_name(sample_image, capsys):
     exit_code = cli.main([str(sample_image), "--engine", "not_a_real_engine"])
     assert exit_code == 1
     assert "Unknown engine" in capsys.readouterr().err
+
+
+def test_cli_debug_dir_writes_debug_images_for_single_file(sample_image, tmp_path):
+    debug_dir = tmp_path / "debug"
+    cli.main([str(sample_image), "--engine", "fake", "--debug-dir", str(debug_dir)])
+    assert {"original.png", "preprocessed.png", "annotated.png"} == {p.name for p in debug_dir.iterdir()}
+
+
+def test_cli_debug_dir_uses_a_subdirectory_per_input_for_batch(tmp_path):
+    in_dir = tmp_path / "scans"
+    in_dir.mkdir()
+    for name in ["a.png", "b.png"]:
+        cv2.imwrite(str(in_dir / name), np.full((50, 200, 3), 255, dtype=np.uint8))
+    debug_dir = tmp_path / "debug"
+
+    cli.main([str(in_dir), "--engine", "fake", "--debug-dir", str(debug_dir)])
+
+    assert (debug_dir / "a" / "original.png").exists()
+    assert (debug_dir / "b" / "original.png").exists()

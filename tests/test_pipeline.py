@@ -9,10 +9,29 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ocr_resilience.engines import Detection
-from ocr_resilience.pipeline import OCRPipeline, OCRResult, _reading_order
+from ocr_resilience.engines import AVAILABLE_ENGINES, Detection
+from ocr_resilience.pipeline import OCRPipeline, OCRResult, _reading_order, _resolve_engine_names
 from ocr_resilience.quality import QualityReport
 from ocr_resilience.router import RoutingDecision
+
+
+def test_auto_engine_resolution_priority_list_covers_every_registered_engine():
+    """Regression: `_ENGINE_PRIORITY` (used by `engine="auto"`, the
+    documented default `OCR()` usage) previously omitted RapidOCR
+    entirely — added as a fourth engine in `AVAILABLE_ENGINES` without
+    updating this separate, easy-to-forget list, so `OCR()` would never
+    use it even if installed, silently. Checked structurally (every
+    registered engine must appear in the priority list) so a future
+    fifth engine can't repeat this by omission."""
+    from ocr_resilience.pipeline import _ENGINE_PRIORITY
+    assert set(_ENGINE_PRIORITY) == set(AVAILABLE_ENGINES)
+
+
+def test_resolve_engine_names_auto_includes_rapidocr_when_importable(monkeypatch):
+    import importlib.util as importlib_util
+
+    monkeypatch.setattr(importlib_util, "find_spec", lambda name: object())  # pretend every binding is installed
+    assert "rapidocr" in _resolve_engine_names("auto")
 
 
 def test_reading_order_sorts_scrambled_lines_top_to_bottom():

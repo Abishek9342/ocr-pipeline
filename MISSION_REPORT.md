@@ -13,6 +13,20 @@ truth this whole report is written against.
 **Status legend:** ✅ Done and measured · 🟡 Partial (built, not complete)
 · ⬜ Not attempted (with reason)
 
+**Update**: a second mission phase (`ocr_next_research_mission.md` —
+"Adaptive Engine Selection + Confidence Calibration") followed this
+report and is handed off separately in `docs/NEXT_PHASE_REPORT.md`, with
+detailed evidence in `docs/engine_selection_report.md`,
+`docs/confidence_calibration_report.md`, and
+`docs/routing_benchmark_report.md`. It replaced the registration-order
+single-engine choice this report's section 1/7/45 flagged as a gap
+(`available_engines[0]`) with quality-aware selection, added ranked
+confidence-based fallback, and investigated (and honestly rejected, with
+real evidence either way) confidence calibration as a fusion-weighting
+fix. Sections below are left as originally written for that first phase;
+treat `docs/NEXT_PHASE_REPORT.md` as the current status for anything it
+explicitly updates.
+
 ---
 
 ## 0. Audit the existing project

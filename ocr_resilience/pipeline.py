@@ -174,6 +174,7 @@ class OCRPipeline:
         force_step: str | None = None,
         fusion_weighted: bool = True,
         min_confidence_for_fallback: float | None = None,
+        debug_dir: str | None = None,
     ) -> OCRResult:
         """Run the full pipeline on one image.
 
@@ -203,6 +204,11 @@ class OCRPipeline:
         configuration (more engines), not a preprocessing retry — costs
         roughly double the latency only when it actually triggers. `None`
         (default) disables it entirely, at zero overhead.
+
+        `debug_dir`: if set, writes original.png/preprocessed.png/
+        annotated.png (detected boxes + text + confidence drawn on the
+        original) to this directory — see `ocr_resilience.debug`. `None`
+        (default) skips this entirely.
         """
         if isinstance(image, str):
             image = cv2.imread(image)
@@ -243,29 +249,82 @@ class OCRPipeline:
             and result.confidence < min_confidence_for_fallback
             and len(routing.engines_to_run) < len(self._engines)
         ):
-            fallback_engines = list(self._engines.keys())
-            fallback_ordered, fallback_timing = self._run_engines_and_fuse(processed, fallback_engines, fusion_weighted)
-            timing.update({f"fallback_{k}": v for k, v in fallback_timing.items()})
-            fallback_routing = RoutingDecision(
-                engines_to_run=fallback_engines,
-                reason=(
-                    f"confidence-based fallback: first pass confidence {result.confidence:.2f} "
-                    f"< threshold {min_confidence_for_fallback} -> escalated to full ensemble "
-                    f"(first pass: {routing.reason})"
-                ),
-            )
-            fallback_result = OCRResult(
-                detections=fallback_ordered, quality=report, routing=fallback_routing,
-                preprocessing_steps=steps, timing_sec=timing,
-            )
-            if fallback_result.confidence > result.confidence:
-                return fallback_result
-            result.routing.reason += (
-                f" (confidence-based fallback attempted, did not improve: "
-                f"{fallback_result.confidence:.2f} <= {result.confidence:.2f} — kept first pass)"
+            result = self._confidence_fallback(
+                processed, report, routing, steps, timing, result, fusion_weighted, min_confidence_for_fallback,
             )
 
+        if debug_dir is not None:
+            from .debug import export_debug_bundle
+            export_debug_bundle(image, processed, result.detections, debug_dir)
+
         return result
+
+    def _confidence_fallback(
+        self,
+        processed: np.ndarray,
+        report: QualityReport,
+        first_routing: RoutingDecision,
+        steps: list[str],
+        timing: dict[str, float],
+        first_result: OCRResult,
+        fusion_weighted: bool,
+        threshold: float,
+    ) -> OCRResult:
+        """Ranked escalation, not a straight jump to the full ensemble:
+        tier 1 adds just the single best-ranked fallback engine (see
+        `engine_selection.rank_fallback_chain`) to the first pass; only if
+        THAT still doesn't clear the confidence threshold does tier 2 (the
+        full ensemble) run. With exactly two engines total, tier 1 and the
+        full ensemble are the same set — the two-tier structure only does
+        real extra work (and costs real extra latency) with three or more
+        engines available."""
+        from .engine_selection import rank_fallback_chain
+
+        primary = first_routing.engines_to_run[0]
+        all_engines = list(self._engines.keys())
+        fallback_chain = rank_fallback_chain(primary, all_engines)
+
+        candidates = [first_result]
+
+        if fallback_chain and len(first_routing.engines_to_run) + 1 < len(all_engines):
+            tier1_engines = [primary, fallback_chain[0]]
+            tier1_ordered, tier1_timing = self._run_engines_and_fuse(processed, tier1_engines, fusion_weighted)
+            timing.update({f"fallback_tier1_{k}": v for k, v in tier1_timing.items()})
+            tier1_routing = RoutingDecision(
+                engines_to_run=tier1_engines,
+                reason=(
+                    f"confidence-based fallback tier 1: first pass confidence {first_result.confidence:.2f} "
+                    f"< threshold {threshold} -> escalate to ranked fallback engine '{fallback_chain[0]}' "
+                    f"(first pass: {first_routing.reason})"
+                ),
+            )
+            candidates.append(OCRResult(
+                detections=tier1_ordered, quality=report, routing=tier1_routing,
+                preprocessing_steps=steps, timing_sec=timing,
+            ))
+
+        if max(c.confidence for c in candidates) < threshold and len(all_engines) > len(candidates[-1].routing.engines_to_run):
+            tier2_ordered, tier2_timing = self._run_engines_and_fuse(processed, all_engines, fusion_weighted)
+            timing.update({f"fallback_tier2_{k}": v for k, v in tier2_timing.items()})
+            tier2_routing = RoutingDecision(
+                engines_to_run=all_engines,
+                reason=(
+                    f"confidence-based fallback tier 2 (final escalation): "
+                    f"still below threshold {threshold} after tier 1 -> full ensemble"
+                ),
+            )
+            candidates.append(OCRResult(
+                detections=tier2_ordered, quality=report, routing=tier2_routing,
+                preprocessing_steps=steps, timing_sec=timing,
+            ))
+
+        best = max(candidates, key=lambda r: r.confidence)
+        if best is first_result:
+            best.routing.reason += (
+                f" (confidence-based fallback attempted through {len(candidates) - 1} escalation tier(s), "
+                f"none improved on {first_result.confidence:.2f} — kept first pass)"
+            )
+        return best
 
     def _run_engines_and_fuse(
         self, processed: np.ndarray, engine_names: list[str], fusion_weighted: bool,
@@ -292,7 +351,7 @@ class OCRPipeline:
         return [self.run(image, **run_kwargs) for image in images]
 
 
-_ENGINE_PRIORITY = ["tesseract", "easyocr", "paddleocr"]
+_ENGINE_PRIORITY = ["tesseract", "easyocr", "paddleocr", "rapidocr"]
 
 
 def _resolve_engine_names(engine: str) -> list[str]:
@@ -301,7 +360,7 @@ def _resolve_engine_names(engine: str) -> list[str]:
 
     import importlib.util
 
-    _IMPORT_MODULE = {"tesseract": "pytesseract", "easyocr": "easyocr", "paddleocr": "paddleocr"}
+    _IMPORT_MODULE = {"tesseract": "pytesseract", "easyocr": "easyocr", "paddleocr": "paddleocr", "rapidocr": "rapidocr"}
     available = [name for name in _ENGINE_PRIORITY if importlib.util.find_spec(_IMPORT_MODULE[name]) is not None]
     if not available:
         raise ValueError(
@@ -333,13 +392,13 @@ class OCR:
         self._pipeline = OCRPipeline.with_engines(_resolve_engine_names(engine))
         self._pipeline._degradation_threshold = degradation_threshold
 
-    def predict(self, image: np.ndarray | str) -> OCRResult:
-        return self._pipeline.run(image, skip_preprocessing=self._skip_preprocessing)
+    def predict(self, image: np.ndarray | str, debug_dir: str | None = None) -> OCRResult:
+        return self._pipeline.run(image, skip_preprocessing=self._skip_preprocessing, debug_dir=debug_dir)
 
     def predict_batch(self, images: list[np.ndarray | str]) -> list[OCRResult]:
         return self._pipeline.run_batch(images, skip_preprocessing=self._skip_preprocessing)
 
-    def predict_dict(self, image: np.ndarray | str) -> dict:
+    def predict_dict(self, image: np.ndarray | str, debug_dir: str | None = None) -> dict:
         """`predict()` plus serialization, honoring `return_boxes` from the
         constructor — the CLI uses this for its JSON output."""
-        return self.predict(image).to_dict(include_boxes=self._return_boxes)
+        return self.predict(image, debug_dir=debug_dir).to_dict(include_boxes=self._return_boxes)

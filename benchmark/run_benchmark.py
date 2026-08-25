@@ -123,9 +123,18 @@ def run(argv: list[str] | None = None) -> None:
                         result = pipeline.run(degraded)
                         text = result.raw_text
                         stage_timings = dict(result.timing_sec)
+                        confidence = result.confidence
+                        n_detections = len(result.detections)
+                        routing_reason = result.routing.reason
+                        engine_used = result.engine_used
                     else:
-                        text = " ".join(d.text for d in loaded[system].recognize(degraded))
+                        detections = loaded[system].recognize(degraded)
+                        text = " ".join(d.text for d in detections)
                         stage_timings = {}
+                        confidence = sum(d.confidence for d in detections) / len(detections) if detections else 0.0
+                        n_detections = len(detections)
+                        routing_reason = ""
+                        engine_used = system
                 except Exception as exc:  # noqa: BLE001 - a runtime failure mid-benchmark degrades gracefully, not a crash
                     tracemalloc.stop()
                     print(f"\n  [dropping {system}] failed on {item['path']}/{preset}: {exc}", file=sys.stderr)
@@ -137,9 +146,13 @@ def run(argv: list[str] | None = None) -> None:
                 tracemalloc.stop()
 
                 rows.append({
-                    "style": item["style"], "preset": preset, "system": system,
+                    "image_id": os.path.basename(item["path"]), "style": item["style"],
+                    "preset": preset, "system": system,
                     "cer": cer(text, truth), "wer": wer(text, truth),
                     "latency_sec": elapsed, "peak_memory_bytes": peak_bytes,
+                    "mean_confidence": confidence, "n_detections": n_detections,
+                    "engine_used": engine_used, "routing_reason": routing_reason,
+                    "catastrophic_failure": cer(text, truth) >= 0.9,
                 })
                 stage_timings["total"] = elapsed
                 for stage, seconds in stage_timings.items():
@@ -174,6 +187,7 @@ def _write_outputs(rows, latency_rows, systems, skipped, presets, out_arg) -> No
         mean_cer=("cer", "mean"), mean_wer=("wer", "mean"),
         mean_latency_sec=("latency_sec", "mean"), median_latency_sec=("latency_sec", "median"),
         p95_latency_sec=("latency_sec", _p95), mean_peak_memory_bytes=("peak_memory_bytes", "mean"),
+        mean_confidence=("mean_confidence", "mean"), catastrophic_failure_rate=("catastrophic_failure", "mean"),
     ).round(6)
     summary.to_csv(os.path.join(out_dir, "summary.csv"))
 

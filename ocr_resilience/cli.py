@@ -48,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write JSON here. A directory for --output writes one file per input; omit to print to stdout.",
     )
     parser.add_argument("--no-boxes", action="store_true", help="Omit bounding boxes from the JSON output.")
+    parser.add_argument(
+        "--debug-dir", default=None,
+        help="Write original/preprocessed/annotated debug images here. "
+             "A subdirectory per input is used for multi-file/batch runs.",
+    )
     return parser
 
 
@@ -71,8 +76,11 @@ def main(argv: list[str] | None = None) -> int:
 
     exit_code = 0
     for image_path in inputs:
+        debug_dir = None
+        if args.debug_dir:
+            debug_dir = f"{args.debug_dir}/{image_path.stem}" if len(inputs) > 1 else args.debug_dir
         try:
-            result = ocr.predict_dict(str(image_path))
+            result = ocr.predict_dict(str(image_path), debug_dir=debug_dir)
         except Exception as exc:  # noqa: BLE001 - one bad file must not abort the batch
             print(f"Error processing {image_path}: {exc}", file=sys.stderr)
             exit_code = 1

@@ -6,6 +6,7 @@ are worth the latency of running everything and fusing (fusion.py).
 """
 from dataclasses import dataclass
 
+from .engine_selection import select_primary_engine
 from .quality import QualityReport
 
 
@@ -33,7 +34,8 @@ def decide(report: QualityReport, available_engines: list[str], degradation_thre
             reason=f"hard case ({', '.join(reasons)}) -> ensemble all {len(available_engines)} available engine(s)",
         )
 
+    engine, selection_reason = select_primary_engine(report, available_engines)
     return RoutingDecision(
-        engines_to_run=[available_engines[0]],
-        reason=f"clean/mildly-degraded image ({degraded_count} flags) -> single fast engine ({available_engines[0]})",
+        engines_to_run=[engine],
+        reason=f"clean/mildly-degraded image ({degraded_count} flags) -> single engine, {selection_reason}",
     )

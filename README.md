@@ -67,11 +67,11 @@ alone, no preprocessing — vs. this pipeline pooling all four}.
 
 | System | Mean CER ↓ | Mean WER ↓ | Mean latency (s) ↓ | P95 latency (s) ↓ | Mean peak memory ↓ |
 |---|---:|---:|---:|---:|---:|
-| **ours** | **0.0336** | **0.1796** | 1.202 | 2.829 | 43.4 MB |
-| paddleocr\_alone | 0.0972 | 0.3124 | 0.212 | 0.309 | 3.6 MB |
-| easyocr\_alone | 0.1115 | 0.3466 | 0.783 | 1.243 | 3.3 MB |
-| tesseract\_alone | 0.1678 | 0.3141 | 0.281 | 0.806 | 0.1 MB |
-| rapidocr\_alone | 0.1746 | 0.2380 | 1.074 | 1.385 | 161.0 MB |
+| **ours** | **0.0319** | **0.1739** | 1.234 | 3.282 | 44.7 MB |
+| paddleocr\_alone | 0.1108 | 0.3228 | 0.198 | 0.266 | 3.6 MB |
+| easyocr\_alone | 0.1213 | 0.3626 | 0.961 | 1.481 | 3.3 MB |
+| rapidocr\_alone | 0.1718 | 0.2382 | 1.212 | 1.496 | 161.0 MB |
+| tesseract\_alone | 0.1790 | 0.3205 | 0.200 | 0.665 | 0.1 MB |
 
 **Mean CER by degradation preset:**
 
@@ -80,32 +80,37 @@ alone, no preprocessing — vs. this pipeline pooling all four}.
 | clean | 0.0166 | 0.0166 | 0.0249 | **0.0106** | 0.0544 | paddleocr |
 | light\_blur | 0.0143 | 0.0143 | 0.0415 | **0.0043** | 0.0558 | paddleocr |
 | heavy\_blur | **0.0065** | 0.0701 | 0.1358 | 0.0695 | 1.0000 (total failure) | **ours** |
-| motion\_blur | 0.1298 | 0.2447 | 0.5614 | 0.2327 | **0.1201** | rapidocr (narrowly) |
-| noisy | 0.0283 | 0.0166 | 0.0194 | **0.0081** | 0.0679 | paddleocr |
-| salt\_pepper | **0.0258** | 1.0000 (total failure) | 0.0732 | 0.6567 | 0.2128 | **ours** |
-| skewed | 0.0144 | 0.1245 | 0.2009 | **0.0064** | 0.0442 | paddleocr |
-| low\_contrast | 0.0250 | 0.0209 | 0.0568 | **0.0129** | 0.0562 | paddleocr |
+| motion\_blur | **0.0870** | 0.2447 | 0.5614 | 0.2327 | 0.1201 | **ours** |
+| noisy | 0.0315 | 0.0187 | 0.0452 | **0.0056** | 0.0839 | paddleocr |
+| salt\_pepper | **0.0831** | 1.0000 (total failure) | 0.1213 | 0.8051 | 0.2000 | **ours** |
+| skewed | **0.0043** | 0.1245 | 0.2009 | 0.0064 | 0.0442 | **ours** |
+| low\_contrast | **0.0085** | 0.0209 | 0.0568 | 0.0129 | 0.0562 | **ours** |
 | smudged | 0.0270 | 0.0270 | 0.0541 | **0.0081** | 0.0704 | paddleocr |
 | jpeg\_compressed | **0.0142** | 0.0142 | 0.0449 | 0.0437 | 0.0819 | tie (ours/tesseract) |
-| combo\_hard | 0.0682 | 0.2973 | **0.0133** | 0.0160 | 0.1571 | **easyocr** |
+| combo\_hard | 0.0581 | 0.4180 | 0.0478 | **0.0199** | 0.1227 | paddleocr |
 
-**This is not "the pipeline wins everywhere," and pooling four engines
-didn't change that.** Single-engine PaddleOCR alone is a genuinely strong
-baseline — it wins outright on 6 of 11 presets (clean, light blur, general
-noise, skew, low contrast, smudged) and is dramatically faster (0.21s vs.
-1.2s mean). Plain EasyOCR alone still wins the stacked `combo_hard` case.
-**What the ensemble actually buys is avoiding each single engine's
-worst-case catastrophic failure**: Tesseract goes completely blank on
-salt-and-pepper noise (CER 1.0), RapidOCR goes completely blank on heavy
-Gaussian blur (CER 1.0), and PaddleOCR falls apart on salt-and-pepper
-(0.66) — three different engines, three different specific blind spots,
-none of which the pipeline inherits, because it never depends on only one
-engine for a case severe enough to trigger ensembling. That's also
-precisely why its mean latency (1.2s) and memory (43MB — RapidOCR's own
-ONNX runtime allocation alone averages 161MB when it runs) are much higher
-than any single engine: consistency here is bought with real, measured
-compute cost, not free. Whether that trade is worth it depends on your
-use case — this table is what lets you decide, not a headline claim.
+**Genuinely closer to "wins about as often as it loses" now, after this
+session's quality-aware engine-selection work** (see
+`docs/engine_selection_report.md`) — the pipeline wins outright on 5 of
+11 presets (heavy blur, motion blur, salt-and-pepper, skew, low contrast),
+ties on 1 (JPEG), and single-engine PaddleOCR still wins outright on the
+other 5 (clean, light blur, general noise, smudged, and now `combo_hard`
+too — PaddleOCR alone beats every other system on that case). PaddleOCR
+remains dramatically faster (0.20s vs. 1.23s mean) and is still the
+better choice if latency matters more than the last percent of accuracy.
+**What the ensemble buys, beyond the categories it wins outright, is
+avoiding each single engine's worst-case catastrophic failure**:
+Tesseract goes completely blank on salt-and-pepper noise (CER 1.0),
+RapidOCR goes completely blank on heavy Gaussian blur (CER 1.0), and
+PaddleOCR falls apart on salt-and-pepper (0.81) — three different
+engines, three different specific blind spots, none of which the
+pipeline inherits. That's also precisely why its mean latency (1.23s)
+and memory (44.7MB — RapidOCR's own ONNX runtime allocation alone
+averages 161MB when it runs) are much higher than any single engine:
+consistency and now genuinely competitive per-condition accuracy are
+bought with real, measured compute cost, not free. Whether that trade is
+worth it depends on your use case — this table is what lets you decide,
+not a headline claim.
 
 Run `python -m benchmark.run_benchmark --engines tesseract,easyocr,paddleocr,rapidocr,ours --presets all`
 yourself; raw per-image results, an aggregated `summary.csv`, per-stage
@@ -154,6 +159,22 @@ noisy, combo_hard):
 
 Run `python -m benchmark.run_ablation` yourself; results land in
 `benchmark/results/ablation_summary.csv` and `ablation_raw.csv`.
+
+## Robustness Curves
+
+A single CER number per degradation type (the tables above) can hide a
+sharp failure threshold sitting just past the tested severity.
+`benchmark/run_robustness.py` sweeps blur/noise/skew/JPEG severity across
+5 levels each rather than one fixed point per type. **Headline finding:
+Tesseract has a sharp failure cliff on Gaussian noise between sigma 25
+and 50** — CER jumps from 0.035 straight to a complete failure (1.0) and
+stays there, while EasyOCR and the pipeline degrade gracefully at every
+tested severity, including sigma=80. The main benchmark's `noisy` preset
+(sigma=25) sits just below that cliff, which is why Tesseract looked
+essentially fine there (0.0166 CER) — a single-severity snapshot doesn't
+show you where the cliff is. Full curves, including a JPEG-quality sweep
+that shows no real trend (an honest null result, not a hidden one), are
+in `docs/robustness_curves.md`. Reproduce: `python -m benchmark.run_robustness`.
 
 ### The debugging story behind these numbers (worth reading before trusting them)
 
@@ -244,6 +265,22 @@ this README was written:
    confidence-weighted (`OCRPipeline.run(fusion_weighted=False)` is kept
    as a real, tested option, not adopted as the default). See
    `docs/failure_analysis.md` for the full experiment.
+10. **The benchmark's own reproducibility claim had a second hole in it,
+    found while building a new experiment (severity-sweep robustness
+    curves) that happened to call the noise-degradation functions
+    directly.** `gaussian_noise()` and `salt_and_pepper()` called
+    `np.random.normal`/`np.random.randint` directly — reading NumPy's own
+    *global* random state, completely ignoring the `rng` parameter every
+    other degradation function in the same file already respects.
+    Confirmed directly: `apply_degradation(img, "noisy", seed=42)` called
+    twice produced two different images. This meant the `noisy`,
+    `salt_pepper`, and `combo_hard` presets were silently NOT
+    seed-reproducible the whole time — including in every number in this
+    README's Results table above them. Fixed by deriving a seeded
+    `numpy.random.Generator` from the same `rng` object instead. The
+    existing reproducibility regression test only checked the `skewed`
+    preset (which never touched numpy's global state, so it never
+    caught this) — now parametrized over every preset.
 
 Each of these has a regression test in `tests/` reproducing the exact
 failure mode, not just testing the fixed behavior in isolation. #5 and #6
@@ -328,6 +365,7 @@ results = pipeline.run_batch(["a.png", "b.png"])
 ocr-pipeline document.jpg
 ocr-pipeline document.jpg --engine auto --output result.json
 ocr-pipeline ./scans/ --output results/     # batch: one JSON per input, one bad file doesn't abort the rest
+ocr-pipeline document.jpg --debug-dir ./debug   # writes original/preprocessed/annotated images for inspection
 ```
 
 ## Architecture in code
@@ -337,7 +375,17 @@ ocr-pipeline ./scans/ --output results/     # batch: one JSON per input, one bad
   means denoise / unsharp deblur / CLAHE / Sauvola (opt-in) / smudge
   removal; `build_pipeline()` composes only what the quality report says
   is needed.
-- `router.py` — quality-aware single-engine-vs-ensemble routing.
+- `router.py` — quality-aware single-engine-vs-ensemble routing; the
+  single-engine choice itself is delegated to...
+- `engine_selection.py` — quality-aware single-engine selection
+  (`select_primary_engine`, interpretable rules keyed on `QualityReport`'s
+  continuous fields, not registration order) and ranked confidence-based
+  fallback ordering (`rank_fallback_chain`). See `docs/engine_selection_report.md`.
+- `calibration.py` — binned confidence calibration, reliability curves,
+  Expected Calibration Error, calibrated fusion — investigated as a fix
+  for cross-engine confidence-scale mismatch, real miscalibration found,
+  but rejected as a fusion-weighting default (didn't improve fused
+  output). See `docs/confidence_calibration_report.md`.
 - `engines.py` — `OCREngine` protocol + Tesseract/EasyOCR/PaddleOCR/
   RapidOCR adapters.
 - `fusion.py` — ROVER-style multi-engine consensus (spatial grouping via
@@ -355,7 +403,12 @@ ocr-pipeline ./scans/ --output results/     # batch: one JSON per input, one bad
   ablation hooks (used by `benchmark/run_ablation.py`) plus
   `min_confidence_for_fallback` for a genuine second-pass escalation to
   every available engine when the first pass's confidence is low.
+- `debug.py` — visual debugging export (`OCRPipeline.run(debug_dir=...)`,
+  `ocr-pipeline --debug-dir`): original/preprocessed/annotated images.
 - `cli.py` — the `ocr-pipeline` command.
+- `benchmark/run_robustness.py` — severity-sweep robustness curves (not
+  just one CER per degradation type); `scripts/check_regression.py` — a
+  CI regression gate against a stored baseline (`benchmark/results/baseline_summary.json`).
 
 ## Limitations
 
@@ -370,29 +423,41 @@ ocr-pipeline ./scans/ --output results/     # batch: one JSON per input, one bad
   heuristic has no multi-column/layout-detection logic.
 - No perspective/four-point document correction, no orientation
   (90/180/270°) detection — only sub-degree deskew.
-- The pipeline is not the single best system on every degradation type
-  (see Results) — single-engine PaddleOCR wins on 6 of 11 presets, and
-  plain EasyOCR wins the stacked `combo_hard` case.
-- Confidence scores are used as-is from each engine with no cross-engine
-  *calibration* (only the fusion-weighting question was tested — see
-  finding #9; a real per-engine calibration curve, e.g. temperature
-  scaling against ground truth, hasn't been attempted).
+- Single-engine PaddleOCR is the best individual system on 8 of 11
+  presets (see `docs/engine_selection_report.md`'s condition table), and
+  plain EasyOCR wins the stacked `combo_hard` case — the pipeline's
+  advantage is the near-zero catastrophic-failure rate (0.5% vs. 5-14%
+  for single engines), not being the single best on every condition.
+- `select_primary_engine` has explicit rules for only 4 of 11 conditions;
+  the other 7 fall through to registration order (which happens to
+  coincide with reasonable choices for several of them, per the evidence,
+  but isn't asserted as a rule yet).
+- Confidence calibration was investigated (binned/histogram method,
+  `calibration.py`) and real per-engine miscalibration was found (EasyOCR
+  ECE 0.20 vs. PaddleOCR's 0.015) — but applying it to fusion weighting
+  did not improve, and measurably hurt, fused output in a controlled
+  comparison. See `docs/confidence_calibration_report.md` for the full
+  investigation and why it wasn't adopted despite the real underlying
+  finding.
 - No real (non-synthetic) dataset, no dev/val/test split, no held-out
-  challenge set, no CI regression gate on accuracy/latency — see
-  `docs/engineering_backlog.md` for the full list of what a "world-class"
-  version of this project would still need and why each item isn't done
-  here (resource constraints: real licensed datasets, multilingual
-  corpora, GPU budget, or simply scope).
+  challenge set — see `docs/engineering_backlog.md` for the full list of
+  what a "world-class" version of this project would still need and why
+  each item isn't done here (resource constraints: real licensed
+  datasets, multilingual corpora, GPU budget, or simply scope).
 
 ## Roadmap
 
 - A real (non-synthetic) benchmark set — scanned documents, receipts, or
   a licensed handwriting corpus (e.g. IAM) — to validate whether the
   synthetic-benchmark rankings above transfer to real images.
-- A real per-engine confidence calibration (not just the weighted-vs-
-  unweighted fusion test already done) — e.g. fit each engine's own
-  confidence-to-correctness curve against ground truth, then normalize
-  before voting.
+- Extend `select_primary_engine`'s explicit rules to the remaining 7
+  conditions, and make `rank_fallback_chain` condition-aware instead of
+  one aggregate ranking — both using evidence already collected in
+  `benchmark/results/condition_engine_table.csv`, no new experiments
+  required.
+- Isotonic regression for confidence calibration, if a larger corpus
+  shows binned calibration's coarseness (not sample size) was the actual
+  limiting factor — not yet demonstrated, so not attempted.
 - Perspective/four-point document correction and orientation detection.
 - docTR/OnnxTR as a fifth engine (see `docs/engine_landscape.md` — the
   strongest not-yet-added candidate from that research).
