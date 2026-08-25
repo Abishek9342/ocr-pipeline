@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr-resilience"
+version = "0.2.0"
+description = "A classical-CV preprocessing + multi-engine ensemble layer on top of existing OCR engines (EasyOCR, Tesseract, PaddleOCR) — no LLM, no trained model of its own."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Abishek9342" }]
+keywords = ["ocr", "computer-vision", "image-preprocessing", "ensemble", "document-processing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "opencv-python-headless>=4.8",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+easyocr = ["easyocr>=1.7"]
+tesseract = ["pytesseract>=0.3.10"]
+paddleocr = ["paddleocr>=3.0.0", "paddlepaddle>=3.0.0"]
+all = ["easyocr>=1.7", "pytesseract>=0.3.10", "paddleocr>=3.0.0", "paddlepaddle>=3.0.0"]
+benchmark = ["pandas>=2.0", "pillow>=10.0", "psutil>=5.9"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+ocr-pipeline = "ocr_resilience.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Abishek9342/ocr-resilience-pipeline"
+Issues = "https://github.com/Abishek9342/ocr-resilience-pipeline/issues"
+
+[tool.setuptools.packages.find]
+include = ["ocr_resilience*"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E702"]  # a few deliberately compact lines in fusion.py/pipeline.py's DP loops

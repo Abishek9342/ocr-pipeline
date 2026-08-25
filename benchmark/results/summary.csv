@@ -1,0 +1,4 @@
+system,mean_cer,mean_wer,mean_latency_sec,median_latency_sec,p95_latency_sec,mean_peak_memory_bytes
+easyocr,0.118184,0.367273,0.294912,0.264331,0.430754,3328970.545455
+ours,0.053974,0.22303,0.237794,0.14326,0.564505,2487505.363636
+tesseract,0.166439,0.313788,0.132762,0.121199,0.160665,99515.0
