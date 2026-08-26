@@ -13,6 +13,7 @@ rather than duplicating pipeline logic here.
 
 Run: python -m benchmark.run_ablation
 """
+import json
 import os
 import sys
 import time
@@ -23,7 +24,8 @@ import cv2
 
 from benchmark.corpus import build_corpus
 from benchmark.degrade import apply_degradation
-from benchmark.run_benchmark import stable_seed
+from benchmark.run_benchmark import _git_commit, stable_seed
+from ocr_resilience import __version__ as pipeline_version
 from ocr_resilience.metrics import cer, wer
 from ocr_resilience.pipeline import OCRPipeline
 
@@ -94,6 +96,14 @@ def _summarize(rows: list[dict]) -> None:
     print("\n=== Post-processing effect: mean CER before vs. after text post-processing (full pipeline only) ===")
     full = df[df["variant"] == "full_pipeline(adaptive+multi_engine)"]
     print(full[["cer_raw", "cer_processed"]].mean().round(4).to_string())
+
+    # Sidecar metadata (mission section 16): records the commit/version this
+    # ablation was generated at, so a future staleness check (e.g. "does this
+    # CSV predate the router change it's supposed to be measuring?") can be
+    # mechanical instead of a manual timestamp comparison — the exact gap that
+    # let ablation_raw.csv go stale earlier in this same overnight pass.
+    with open(os.path.join(out_dir, "ablation_meta.json"), "w", encoding="utf-8") as f:
+        json.dump({"pipeline_version": pipeline_version, "git_commit": _git_commit()}, f, indent=2)
 
     print(f"\nFull ablation results written to {out_dir}")
 

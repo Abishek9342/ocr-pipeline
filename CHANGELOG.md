@@ -4,6 +4,85 @@ All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - Unreleased
+
+Overnight statistical-hardening, real-data-readiness, and routing-v2-prep
+pass. See `docs/OVERNIGHT_RESEARCH_REPORT.md` for the full narrative,
+`docs/TOMORROW_HANDOFF.md` for the concise pickup point, and
+`docs/routing_v2_readiness.md` for the per-condition routing audit.
+
+### Added
+- `benchmark/stats_utils.py` extended: `bootstrap_median_ci`,
+  `paired_bootstrap_diff_ci`, `paired_effect_size` (Cohen's d),
+  `percentile_interval`, `pairwise_comparison_summary`,
+  `bonferroni_correction`; `latency_variance_stats` now also reports
+  median/P95. All with validation, deterministic seeding, and no silent
+  data-dropping.
+- `benchmark/run_paired_comparison.py` — paired bootstrap CI (`ours` vs.
+  each baseline, matched by `image_id`/`preset`). All four paired 95%
+  CIs exclude zero (see `docs/statistical_rigor_report.md`).
+- `benchmark/run_statistical_report.py` extended: repeated-run latency
+  (cold-start vs. warm) now measured for every engine plus `ours`, not
+  just Tesseract.
+- `benchmark/analyze_robustness.py` — worst-severity CER, degradation
+  slope, catastrophic-onset severity, and normalized AUC per
+  (corruption type, system), computed from the existing robustness
+  curves without replacing them.
+- `benchmark/dataset_schema.py`, `benchmark/dataset_validator.py`,
+  `benchmark/failure_taxonomy.py`, `benchmark/run_real_dataset.py` — a
+  generic real-dataset schema, manifest validator (broken paths,
+  duplicate/missing IDs, split overlap, invalid UTF-8, malformed
+  metadata/bounding boxes), a rule-based (not learned) failure-type
+  taxonomy, and a CLI scaffold that validates + evaluates against a
+  real dataset the moment one exists. No dataset was downloaded or
+  fabricated — outbound network access remains sandboxed.
+- `run_benchmark.py`'s row schema extended with `image_features` (the
+  full `QualityReport`, logged at collection time), `language`/`script`
+  (honest per-corpus values, forward-compatible with a real
+  multilingual dataset), `calibrated_confidence` (left `None` — no
+  calibrator is wired in; see the 0.4.0 rejection), and `failure_type`.
+- `docs/routing_v2_readiness.md` — per-condition audit of
+  `select_primary_engine`'s coverage. Headline finding: every remaining
+  real gap (`smudged`, `light_blur`, `motion_blur`) needs a NEW or
+  recalibrated quality signal, not a quick rule using an existing field
+  — checked directly against `assess()`'s real output, not assumed.
+- `docs/reproduce_denoise_gate_finding.py` — reproduces the controlled
+  comparison behind the `denoise()` fix below.
+
+### Fixed
+- **`ocr_resilience/preprocess.py`: `build_pipeline()`'s
+  `is_noisy -> denoise()` gate was hurting accuracy on the exact
+  condition it targeted.** A controlled same-image comparison showed
+  PaddleOCR's CER on the `noisy` preset rise from 0.0087 to 0.0217 (2.5x
+  worse) when this step ran; consistent with the independent ablation
+  finding that forcing `denoise()` unconditionally hurts CER corpus-wide.
+  Removed from the default chain. This is a genuinely MIXED result, not
+  a clean win — `combo_hard`'s CER measurably worsened (0.0581 ->
+  0.0681) because Tesseract's ensemble contribution there specifically
+  benefits from denoising even though its `noisy`-alone performance
+  doesn't. Kept anyway because the actually-shipped 4-engine pipeline's
+  headline CER improved (0.0319 -> 0.0308) and the `noisy` win is large;
+  documented precisely in `denoise()`'s own docstring so a future
+  contributor doesn't have to re-discover this trade-off. Found during
+  this pass's routing-v2 readiness audit, which noticed `ours`
+  underperformed Tesseract ALONE on the `noisy` preset with no obvious
+  explanation until traced here.
+- **Stale generated benchmark artifacts**: `ablation_raw.csv`/
+  `ablation_summary.csv` were timestamped before `engine_selection.py`
+  existed — the exact class of bug this pass's Section 15 reproducibility
+  audit was built to catch. Re-ran; then re-ran AGAIN after the
+  `denoise()` fix above changed the numbers a second time.
+- **A machine-sleep data-quality issue in this pass's own overnight full-
+  benchmark run**: 2 of 1100 raw rows recorded latency_sec of 3-11 hours
+  because the host machine slept mid-run (confirmed via matching
+  timestamp gaps in the run log). Excluded from latency aggregates only
+  (their CER/WER values are unaffected and remain included); documented
+  in `benchmark.json`'s `data_quality_note` rather than silently dropped
+  or silently left in.
+- `benchmark/results/baseline_summary.json` (the CI regression baseline)
+  refreshed to the corrected post-fix numbers via
+  `scripts/check_regression.py --write-baseline`.
+
 ## [0.4.0] - Unreleased
 
 See `docs/NEXT_PHASE_REPORT.md` for the full handoff on adaptive engine

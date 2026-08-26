@@ -24,7 +24,55 @@ def denoise(gray: np.ndarray) -> np.ndarray:
     """Non-local means — the standard denoiser for scan/photo noise,
     chosen over a simple Gaussian blur because it smooths flat regions
     while preserving character edges (a Gaussian blur would soften both
-    equally, actively hurting downstream OCR)."""
+    equally, actively hurting downstream OCR).
+
+    NOT part of the default `build_pipeline()` chain (removed 2026-08-25
+    overnight pass — same category of finding as Sauvola binarization's
+    removal below, discovered the same way: measured, not assumed). This
+    is a genuine, MIXED result, reported honestly rather than rounded to
+    a clean story — the same standard this project already applied when
+    rejecting calibrated fusion (`docs/confidence_calibration_report.md`)
+    despite it being theoretically well-motivated:
+
+    - On the `noisy` (pure Gaussian noise) preset, gating this on
+      `QualityReport.is_noisy` made CER WORSE for the engines
+      `select_primary_engine` actually routes noisy images to: PaddleOCR
+      0.0087 -> 0.0217 (2.5x worse), Tesseract 0.0187 -> 0.0209, when this
+      step was applied. Consistent with the independent finding that
+      forcing `denoise()` unconditionally hurts CER across the whole
+      corpus in `run_ablation.py` (0.109 vs. 0.094 baseline — see
+      README.md's Ablation Study).
+    - On `combo_hard` (noise stacked with other degradations), the SAME
+      controlled comparison found the opposite sign for Tesseract
+      specifically (0.0938 with denoise vs. 0.1206 without — WORSE
+      without it), while PaddleOCR and EasyOCR still favored no-denoise
+      (barely). This is why the full 4-engine benchmark's `combo_hard`
+      CER moved from 0.0581 to 0.0681 after this step was removed (a real
+      measured cost) even though the OVERALL headline `ours` CER improved
+      (0.0319 -> 0.0308) and `noisy` improved dramatically (0.0315 ->
+      0.0087) — `combo_hard` usually reaches Tesseract through ensemble
+      fusion (all registered engines vote), so Tesseract's own regression
+      there drags the fused vote down even though the single-engine
+      PaddleOCR path (what most `noisy`-condition images actually take)
+      improved. The 2-engine ablation pool (Tesseract+EasyOCR only, no
+      PaddleOCR) leans on Tesseract's ensemble contribution across every
+      preset it runs, which is why removing this step measurably raised
+      that ablation's `adaptive_preprocessing`/`full_pipeline` numbers —
+      see README.md's ablation honesty note.
+    - Net call: kept OUT of the default chain because the actually-shipped
+      4-engine pipeline's headline metric improved and the `noisy`-preset
+      win is large and clean, while the `combo_hard` cost is smaller and
+      partially offset by ensemble routing already being imperfect there
+      (see `docs/routing_v2_readiness.md`). This is a closer call than
+      the Sauvola removal above, not an unambiguous win — recorded
+      precisely so a future contributor with better evidence (e.g. per-
+      engine preprocessing, not one shared image for every registered
+      engine) can revisit it, rather than re-discovering this trade-off
+      from scratch.
+
+    Call this function directly if you've verified it helps YOUR engine/
+    data with your own controlled before/after comparison — don't assume
+    it does, exactly the same caveat `binarize_sauvola()` already carried."""
     return cv2.fastNlMeansDenoising(gray, h=10, templateWindowSize=7, searchWindowSize=21)
 
 
@@ -118,7 +166,16 @@ def build_pipeline(image: np.ndarray, report: QualityReport | None = None) -> tu
     is already tuned to their own feature extractor — a second, external,
     untuned threshold just destroys information they could have used. Call
     `binarize_sauvola()` directly if you've verified it helps YOUR engine/
-    data — don't assume it does."""
+    data — don't assume it does.
+
+    Non-local-means `denoise()` for general (non-impulse) noise is, as of
+    2026-08-25, ALSO deliberately excluded from this default chain for the
+    same reason (see `denoise()`'s own docstring for the exact controlled
+    numbers) — it measurably hurt CER on precisely the `is_noisy` images
+    it was gated to help. `is_impulse_noisy` -> `median_denoise()` remains
+    gated in below since THAT combination was verified to help (see
+    `docs/statistical_rigor_report.md`/pipeline benchmark: `ours` beats
+    every raw baseline on the `salt_pepper` preset)."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image.copy()
     if report is None:
         report = assess(image)
@@ -131,10 +188,6 @@ def build_pipeline(image: np.ndarray, report: QualityReport | None = None) -> tu
     if report.is_impulse_noisy:
         gray = median_denoise(gray)
         steps.append("median_denoise")
-
-    if report.is_noisy:
-        gray = denoise(gray)
-        steps.append("denoise")
 
     if report.is_blurry:
         gray = deblur_unsharp(gray)

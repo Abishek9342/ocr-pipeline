@@ -27,6 +27,23 @@ fix. Sections below are left as originally written for that first phase;
 treat `docs/NEXT_PHASE_REPORT.md` as the current status for anything it
 explicitly updates.
 
+**Second update**: a third, overnight mission phase
+(`overnight_ocr_research_mission.md` — "Statistical Hardening, Real-Data
+Readiness, and Routing V2 Preparation") followed the second phase and is
+handed off in `docs/OVERNIGHT_RESEARCH_REPORT.md` / `docs/TOMORROW_HANDOFF.md`.
+It substantially extended statistical rigor (paired bootstrap CIs, effect
+sizes), built real-dataset infrastructure (schema, validator, failure
+taxonomy, CLI harness — no real dataset used), and — as a byproduct of a
+routing-readiness audit, not the original plan — found and fixed a real
+bug (`is_noisy -> denoise()` in `ocr_resilience/preprocess.py` was
+hurting the exact condition it targeted). **The current, authoritative
+mean-CER figure is 0.0308** (`docs/statistical_rigor_report.md`), not the
+0.0336/0.0319/0.032 figures that appear in this report and
+`docs/NEXT_PHASE_REPORT.md`/`docs/engine_selection_report.md` below —
+those are left as-written, accurate snapshots of their own phase's
+completion state, not retroactively edited; treat
+`docs/OVERNIGHT_RESEARCH_REPORT.md` as the current status.
+
 ---
 
 ## 0. Audit the existing project

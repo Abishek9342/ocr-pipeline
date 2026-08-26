@@ -4,6 +4,14 @@ Final handoff for `ocr_next_research_mission.md`. Cross-references:
 `docs/engine_selection_report.md`, `docs/confidence_calibration_report.md`,
 `docs/routing_benchmark_report.md`.
 
+**Update**: a third, overnight mission phase followed this one — see
+`docs/OVERNIGHT_RESEARCH_REPORT.md` for the current status. The mean-CER
+figures below (0.038 -> 0.032) are that phase's own accurate snapshot,
+superseded by the current **0.0308** (`docs/statistical_rigor_report.md`)
+after a bug fix (`ocr_resilience/preprocess.py`'s `denoise()` gate) found
+during the later phase's routing-readiness audit. Left as originally
+written below, not retroactively edited.
+
 ### What changed
 
 - Fixed a real bug found during Phase 1's audit: `engine="auto"`

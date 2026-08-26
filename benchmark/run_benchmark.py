@@ -9,10 +9,12 @@ Run: python -m benchmark.run_benchmark
     python -m benchmark.run_benchmark --engines tesseract,easyocr,paddleocr,ours --presets all
 """
 import argparse
+import dataclasses
 import hashlib
 import json
 import os
 import platform
+import subprocess
 import sys
 import time
 import tracemalloc
@@ -23,9 +25,38 @@ import cv2
 
 from benchmark.corpus import build_corpus
 from benchmark.degrade import DEGRADATION_PRESETS, apply_degradation
+from benchmark.failure_taxonomy import classify_failure
 from ocr_resilience.engines import AVAILABLE_ENGINES
 from ocr_resilience.metrics import cer, wer
 from ocr_resilience.pipeline import OCRPipeline
+from ocr_resilience.quality import assess
+
+# This corpus is entirely English/Latin-script (see corpus.py) — these are
+# recorded per-row, honestly, as facts about THIS corpus, not a claim that
+# language/script detection or multilingual evaluation is implemented.
+# Section 12's point is that the row schema below can already carry a real
+# dataset's language/script metadata unchanged once one exists.
+CORPUS_LANGUAGE = "en"
+CORPUS_SCRIPT = "Latin"
+
+
+def _git_commit() -> str:
+    """Best-effort short commit hash for artifact versioning (mission
+    section 16) — this session found multiple STALE generated-artifact
+    bugs (ablation CSVs predating a router change) that a human only
+    caught by comparing file timestamps by hand. Recording the commit a
+    result was generated at makes that check mechanical: a benchmark.json
+    whose commit isn't HEAD is stale by construction, not by inspection.
+    Returns 'unknown' rather than raising if git isn't available (e.g. a
+    tarball install with no .git directory) — this is diagnostic metadata,
+    not something worth failing a benchmark run over."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=os.path.dirname(__file__),
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return "unknown"
 
 ALL_PRESETS = list(DEGRADATION_PRESETS)
 DEFAULT_ENGINES = ["tesseract", "easyocr", "ours"]
@@ -114,6 +145,10 @@ def run(argv: list[str] | None = None) -> None:
             done += 1
             degraded = apply_degradation(clean_img, preset, seed=stable_seed(item["path"], preset))
             truth = item["ground_truth"]
+            # Computed once per (image, preset), reused by every system's row
+            # below — mission section 9's "image_features" column, logged at
+            # collection time rather than re-derived later from a re-run.
+            image_features_json = json.dumps(dataclasses.asdict(assess(degraded)))
 
             for system in list(systems):  # copy: a system can be dropped mid-loop below
                 tracemalloc.start()
@@ -145,14 +180,24 @@ def run(argv: list[str] | None = None) -> None:
                 _, peak_bytes = tracemalloc.get_traced_memory()
                 tracemalloc.stop()
 
+                cer_value, wer_value = cer(text, truth), wer(text, truth)
                 rows.append({
                     "image_id": os.path.basename(item["path"]), "style": item["style"],
                     "preset": preset, "system": system,
-                    "cer": cer(text, truth), "wer": wer(text, truth),
+                    "cer": cer_value, "wer": wer_value,
                     "latency_sec": elapsed, "peak_memory_bytes": peak_bytes,
                     "mean_confidence": confidence, "n_detections": n_detections,
                     "engine_used": engine_used, "routing_reason": routing_reason,
-                    "catastrophic_failure": cer(text, truth) >= 0.9,
+                    "catastrophic_failure": cer_value >= 0.9,
+                    "language": CORPUS_LANGUAGE, "script": CORPUS_SCRIPT,
+                    "image_features": image_features_json,
+                    # No fitted calibrator is wired into this benchmark run (see
+                    # docs/confidence_calibration_report.md's keep/reject decision —
+                    # calibration showed no statistically detectable benefit here).
+                    # Left as None rather than silently populated with an
+                    # uncalibrated value under a misleading column name.
+                    "calibrated_confidence": None,
+                    "failure_type": classify_failure(text, truth, cer_value).value,
                 })
                 stage_timings["total"] = elapsed
                 for stage, seconds in stage_timings.items():
@@ -200,10 +245,13 @@ def _write_outputs(rows, latency_rows, systems, skipped, presets, out_arg) -> No
     print("\n=== Mean CER by system x text style ===")
     print(df.pivot_table(index="style", columns="system", values="cer", aggfunc="mean").round(4).to_string())
 
+    from ocr_resilience import __version__ as pipeline_version
+
     manifest_json = {
         "config": {
             "systems": systems, "systems_skipped": skipped, "presets": presets,
             "python_version": platform.python_version(), "platform": platform.platform(),
+            "pipeline_version": pipeline_version, "git_commit": _git_commit(),
         },
         "summary": json.loads(summary.reset_index().to_json(orient="records")),
     }

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ocr-resilience"
-version = "0.4.0"
+version = "0.5.0"
 description = "A classical-CV preprocessing + multi-engine ensemble layer on top of existing OCR engines (EasyOCR, Tesseract, PaddleOCR, RapidOCR) — no LLM, no trained model of its own."
 readme = "README.md"
 requires-python = ">=3.10"

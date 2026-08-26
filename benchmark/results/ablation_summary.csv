@@ -1,9 +1,9 @@
 variant,cer_raw,wer,latency_sec
-baseline,0.0938,0.2503,0.1536
-baseline+deskew,0.0706,0.2037,0.1411
-baseline+denoise,0.1087,0.2737,0.206
-baseline+clahe,0.1829,0.3457,0.1104
-baseline+adaptive_threshold(sauvola),0.0789,0.2115,0.1142
-baseline+adaptive_preprocessing,0.0616,0.18,0.1819
-baseline+multi_engine_selection,0.0298,0.203,0.9986
-full_pipeline(adaptive+multi_engine),0.0335,0.1508,0.4779
+baseline,0.0938,0.2503,0.0941
+baseline+deskew,0.0706,0.2037,0.0895
+baseline+denoise,0.1087,0.2737,0.148
+baseline+clahe,0.1829,0.3457,0.0852
+baseline+adaptive_threshold(sauvola),0.0789,0.2115,0.0839
+baseline+adaptive_preprocessing,0.0978,0.2293,0.0869
+baseline+multi_engine_selection,0.0298,0.203,0.2737
+full_pipeline(adaptive+multi_engine),0.0412,0.1935,0.1943
